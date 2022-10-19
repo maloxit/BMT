@@ -1,9 +1,12 @@
 import argparse
 
 
-def get_opts():
+def get_opts(parse=True):
     parser = MakeupOptions()
-    opts = parser.parse()
+    if parse:
+        opts = parser.parse()
+    else:
+        opts = parser.parser.parse_known_args([])
     return opts
 
 
@@ -75,5 +78,5 @@ class MakeupOptions:
         self.parser.add_argument('--lr', type=float, default=0.0002, help='lr')
 
     def parse(self):
-        self.opt = self.parser.parse_args()
+        self.opt = self.parser.parse_known_args()
         return self.opt

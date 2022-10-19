@@ -366,7 +366,6 @@ def init_weights(net, init_type, gain):
 
 
 def init_net(net, gpu, init_type='normal', gain=0.02):
-    assert (torch.cuda.is_available())
     net.to(gpu)
     init_weights(net, init_type, gain)
     return net

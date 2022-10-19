@@ -89,8 +89,8 @@ class MakeupDataset(data.Dataset):
             # load groundtrue
             non_makeup_name = os.path.basename(self.non_makeup_path[non_makeup_index])[:-4]
             makeup_name = os.path.basename(self.makeup_path[makeup_index])[:-4]
-            transfer_name = makeup_name + '_' + non_makeup_name + '.png'
-            removal_name = non_makeup_name + '_' + makeup_name + '.png'
+            removal_name = makeup_name + '_' + non_makeup_name + '.png'
+            transfer_name = non_makeup_name + '_' + makeup_name + '.png'
             transfer_img = self.load_img(os.path.join(self.warproot, transfer_name))
             removal_img = self.load_img(os.path.join(self.warproot, removal_name))
             h, w, c = transfer_img.shape
@@ -195,9 +195,6 @@ class MakeupDataset(data.Dataset):
         makeup_parse = cv2.resize(makeup_parse, (opts.resize_size, opts.resize_size),
                                   interpolation=cv2.INTER_NEAREST)
 
-        transfer_img = self.get_groundtrue(transfer_img, non_makeup_mask, transfer_img, non_makeup_mask)
-        removal_img = self.get_groundtrue(removal_img, makeup_mask, removal_img, makeup_mask)
-
         if np.random.random() > 0.5:
             h1 = int(np.ceil(np.random.uniform(1e-2, opts.resize_size - opts.crop_size)))
             w1 = int(np.ceil(np.random.uniform(1e-2, opts.resize_size - opts.crop_size)))
@@ -235,93 +232,3 @@ class MakeupDataset(data.Dataset):
         data = {'non_makeup': non_makeup_img, 'makeup': makeup_img, 'transfer': transfer_img, 'removal': removal_img,
                 'non_makeup_parse': non_makeup_parse, 'makeup_parse': makeup_parse}
         return data
-
-    def get_groundtrue(self, source_img, source_mask, reference_img, reference_mask):
-        source_mask_neck = self.get_neck_ear_mask(copy.copy(source_mask))
-
-        reference_mask_neck = self.get_face_mask(copy.copy(reference_mask))
-
-        source_img_neck = source_img * source_mask_neck
-
-        reference_img_neck = reference_img * reference_mask_neck
-
-        h, w, c = source_img.shape
-        groundtrue_neck = self.hist_match_func(source_img_neck, reference_img_neck)
-
-        groundtrue_neck = np.reshape(groundtrue_neck, [h, w, c])
-
-        source_img[np.where(source_mask_neck == 1)] = groundtrue_neck[np.where(source_mask_neck == 1)]
-
-        return source_img
-
-    # get neck and ear mask
-    def get_neck_ear_mask(self, mask):
-        mask[np.where(mask == 1)] = 0
-        mask[np.where(mask == 14)] = 1
-        mask[np.where(mask == 8)] = 1
-        mask[np.where(mask == 7)] = 1
-        mask[np.where(mask != 1)] = 0
-        return mask
-
-    # get face mask
-    def get_face_mask(self, mask):
-        mask[np.where(mask != 1)] = 0
-        # temp = np.zeros_like(mask)
-        # temp[np.where(mask != 1)] = 0
-        return mask
-
-    # 直方图匹配
-    def hist_match_func(self, source, reference):
-        """
-        Adjust the pixel values of images such that its histogram
-        matches that of a target image
-
-        Arguments:
-        -----------
-            source: np.ndarray
-                Image to transform; the histogram is computed over the flattened
-                array
-            reference: np.ndarray
-                Reference image; can have different dimensions to source
-        Returns:
-        -----------
-            matched: np.ndarray
-                The transformed output image
-        """
-        source = np.expand_dims(source, axis=0)
-        reference = np.expand_dims(reference, axis=0)
-
-        oldshape = source.shape
-        batch_size = oldshape[0]
-        source = np.array(source, dtype=np.uint8)
-        reference = np.array(reference, dtype=np.uint8)
-        # get the set of unique pixel values and their corresponding indices and
-        # counts
-        result = np.zeros(oldshape, dtype=np.uint8)
-        for i in range(batch_size):
-            for c in range(3):
-                s = source[i, ..., c].ravel()
-                r = reference[i, ..., c].ravel()
-
-                s_values, bin_idx, s_counts = np.unique(s, return_inverse=True, return_counts=True)
-                r_values, r_counts = np.unique(r, return_counts=True)
-
-                if (len(s_counts) == 1 or len(r_counts) == 1):
-                    continue
-                # take the cumsum of the counts and normalize by the number of pixels to
-                # get the empirical cumulative distribution functions for the source and
-                # template images (maps pixel value --> quantile)
-                s_quantiles = np.cumsum(s_counts[1:]).astype(np.float64)
-                s_quantiles /= s_quantiles[-1]
-                r_quantiles = np.cumsum(r_counts[1:]).astype(np.float64)
-                r_quantiles /= r_quantiles[-1]
-                r_values = r_values[1:]
-
-                # interpolate linearly to find the pixel values in the template image
-                # that correspond most closely to the quantiles in the source image
-                interp_value = np.zeros_like(s_values, dtype=np.float32)
-                interp_r_values = np.interp(s_quantiles, r_quantiles, r_values)
-                interp_value[1:] = interp_r_values
-                result[i, ..., c] = interp_value[bin_idx].reshape(oldshape[1:3])
-        result = np.array(result, dtype=np.float32)
-        return result

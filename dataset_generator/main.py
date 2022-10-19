@@ -6,12 +6,14 @@ import torch
 import argparse
 from itertools import product
 from PIL import Image
+from tqdm import tqdm
 sys.path.append('.')
 
 from training.config import get_config
 from training.preprocess import PreProcess
 
 from models.loss import ComposePGT
+from datasets import generate_metadata, get_loader
 
 
 
@@ -58,10 +60,10 @@ class PGT_generator():
         """
         inputs = []
         for i in range(len(data_inputs)):
-            inputs.append(data_inputs[i].to(self.device).unsqueeze(0))
+            inputs.append(data_inputs[i].to(self.device))
         return inputs
 
-    def transfer(self, source: Image, reference: Image, postprocess=True):
+    def transfer(self, source_input, reference_input, postprocess=True):
         """
         Args:
             source (Image): The image where makeup will be transfered to.
@@ -69,74 +71,70 @@ class PGT_generator():
         Return:
             Image: Transfered image.
         """
-        source_input, face, crop_face = self.preprocess(source)
-        reference_input, _, _ = self.preprocess(reference)
-        if not (source_input and reference_input):
-            return None
 
-        source_input = self.prepare_input(*source_input)
-        reference_input = self.prepare_input(*reference_input)
         result = self.test(*source_input, *reference_input)
 
         return result
 
 
 def main(config, args):
+    if not args.skip_metadata:
+        generate_metadata(args, config, args.device)
+    if args.metadata_only:
+        return
+
     generator = PGT_generator(config, args)
-    n_imgname = sorted(os.listdir(args.source_dir))
-    m_imgname = sorted(os.listdir(args.reference_dir))
 
-    if args.comb == 'y':
-        iterator = enumerate(product(n_imgname, m_imgname))
-    else:
-        iterator = enumerate(zip(n_imgname, m_imgname))
+    dataloader = get_loader(args, config)
 
-    for i, (imga_name, imgb_name) in iterator:
-        imgA = Image.open(os.path.join(args.source_dir, imga_name)).convert('RGB')
-        imgB = Image.open(os.path.join(args.reference_dir, imgb_name)).convert('RGB')
-
-        result = generator.transfer(imgA, imgB, postprocess=True)
-        if result is None:
-            continue
+    for data in tqdm(dataloader):
+        non_make_up_name = data['non_make_up_name'][0]
+        non_makeup = data['non_makeup']
+        make_up_name = data['make_up_name'][0]
+        makeup = data['makeup']
+        non_makeup = generator.prepare_input(*non_makeup)
+        makeup = generator.prepare_input(*makeup)
+        transfer = generator.transfer(non_makeup, makeup, postprocess=True)
         h = w = config.DATA.IMG_SIZE
-        result = result.resize((h, w))
-        result = np.array(result)
+        transfer = transfer.resize((h, w))
+        transfer = np.array(transfer)
+        removal = generator.transfer(makeup, non_makeup, postprocess=True)
+        h = w = config.DATA.IMG_SIZE
+        removal = removal.resize((h, w))
+        removal = np.array(removal)
 
-        if args.result_only == 'y':
-            vis_image = result
-        else:
-            imgA = imgA.resize((h, w))
-            imgA = np.array(imgA)
-            imgB = imgB.resize((h, w))
-            imgB = np.array(imgB)
-            vis_image = np.hstack((imgA, imgB, result))
-
-        imga_name = os.path.splitext(imga_name)[0]
-        imgb_name = os.path.splitext(imgb_name)[0]
-        save_path = os.path.join(args.save_folder, f"{imga_name}_{imgb_name}.png")
-        Image.fromarray(vis_image.astype(np.uint8)).save(save_path)
+        non_make_up_name_base = os.path.splitext(non_make_up_name)[0]
+        make_up_name_base = os.path.splitext(make_up_name)[0]
+        transfer_save_path = os.path.join(args.warp_path, f"{non_make_up_name_base}_{make_up_name_base}.png")
+        Image.fromarray(transfer.astype(np.uint8)).save(transfer_save_path)
+        removal_save_path = os.path.join(args.warp_path, f"{make_up_name_base}_{non_make_up_name_base}.png")
+        Image.fromarray(removal.astype(np.uint8)).save(removal_save_path)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("argument for training")
     parser.add_argument("--name", type=str, default='demo')
-    parser.add_argument("--save_path", type=str, default='result', help="path to save model")
-    parser.add_argument("--load_path", type=str, help="folder to load model",
-                        default='ckpts/sow_pyramid_a5_e3d2_remapped.pth')
+    parser.add_argument("--warp-path", type=str, default='result', help="path to warp results")
 
-    parser.add_argument("--source-dir", type=str, default="assets/images/makeup")
-    parser.add_argument("--reference-dir", type=str, default="assets/images/non-makeup")
+    parser.add_argument("--non-makeup-dir", type=str, default="assets/images/non-makeup")
+    parser.add_argument("--non-makeup-mask-dir", type=str, default="assets/seg/non-makeup")
+    parser.add_argument("--non-makeup-lms-dir", type=str, default="assets/lms/non-makeup")
+    parser.add_argument("--makeup-dir", type=str, default="assets/images/makeup")
+    parser.add_argument("--makeup-mask-dir", type=str, default="assets/seg/makeup")
+    parser.add_argument("--makeup-lms-dir", type=str, default="assets/lms/makeup")
     parser.add_argument("--gpu", default='0', type=str, help="GPU id to use.")
-    parser.add_argument("--comb", default='y', type=str, help="Test all combinations.")
-    parser.add_argument("--result-only", default='y', type=str, help="Output result only.")
+    parser.add_argument("--skip-metadata", action='store_true', help="Do not generate metadata.")
+    parser.add_argument("--metadata-only", action='store_true', help="Only generate metadata.")
 
     args = parser.parse_args()
     args.gpu = 'cuda:' + args.gpu
-    args.device = torch.device('cpu')
+    if torch.cuda.is_available():
+        args.device = torch.device(args.gpu)
+    else:
+        args.device = torch.device('cpu')
 
-    args.save_folder = os.path.join(args.save_path, args.name)
-    if not os.path.exists(args.save_folder):
-        os.makedirs(args.save_folder)
+
+
 
     config = get_config()
     main(config, args)
