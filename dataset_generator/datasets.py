@@ -6,6 +6,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from itertools import product
+from tqdm import tqdm
 
 from training.config import get_config
 from training.preprocess import PreProcess
@@ -32,7 +33,7 @@ def generate_metadata(args, config, device):
     if not os.path.exists(args.makeup_lms_dir):
         os.makedirs(args.makeup_lms_dir)
 
-    for img_name in n_img_names:
+    for img_name in tqdm(n_img_names):
         raw_image = Image.open(os.path.join(args.non_makeup_dir, img_name)).convert('RGB')
 
         np_image = np.array(raw_image)
@@ -49,7 +50,7 @@ def generate_metadata(args, config, device):
         base_name = os.path.splitext(img_name)[0]
         preprocessor.save_lms(lms, os.path.join(args.non_makeup_lms_dir, f'{base_name}.npy'))
 
-    for img_name in m_img_names:
+    for img_name in tqdm(m_img_names):
         raw_image = Image.open(os.path.join(args.makeup_dir, img_name)).convert('RGB')
 
         np_image = np.array(raw_image)
