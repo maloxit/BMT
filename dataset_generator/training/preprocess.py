@@ -79,7 +79,7 @@ class PreProcess:
 
     def save_mask(self, mask: torch.Tensor, path):
         assert mask.shape[0] == 1
-        mask = mask.squeeze(0).numpy().astype(np.uint8)
+        mask = mask.squeeze(0).cpu().numpy().astype(np.uint8)
         mask = Image.fromarray(mask)
         mask.save(path)
 
@@ -127,7 +127,7 @@ class PreProcess:
         return diff
 
     def save_lms(self, lms: torch.Tensor, path):
-        lms = lms.numpy()
+        lms = lms.cpu().numpy()
         np.save(path, lms)
 
     def load_lms(self, path):
