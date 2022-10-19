@@ -23,6 +23,10 @@ def generate_metadata(args, config, device):
     preprocessor = PreProcess(config, device=device)
     n_img_names = sorted(os.listdir(args.non_makeup_dir))
     m_img_names = sorted(os.listdir(args.makeup_dir))
+    if n_img_names[0].startswith('.ipynb'):
+        n_img_names.pop(0)
+    if m_img_names[0].startswith('.ipynb'):
+        m_img_names.pop(0)
 
     if not os.path.exists(args.non_makeup_mask_dir):
         os.makedirs(args.non_makeup_mask_dir)
@@ -78,6 +82,10 @@ class PGTGeneratorDataset(Dataset):
         self.makeup_lms_dir = args.makeup_lms_dir
         self.n_img_names = sorted(os.listdir(args.non_makeup_dir))
         self.m_img_names = sorted(os.listdir(args.makeup_dir))
+        if self.n_img_names[0].startswith('.ipynb'):
+            self.n_img_names.pop(0)
+        if self.m_img_names[0].startswith('.ipynb'):
+            self.m_img_names.pop(0)
         self.preprocessor = PreProcess(config, need_parser=False, device=device)
         self.img_size = config.DATA.IMG_SIZE
 
