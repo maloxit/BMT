@@ -83,6 +83,9 @@ def main(config, args):
     if args.metadata_only:
         return
 
+    if not os.path.exists(args.warp_path):
+        os.makedirs(args.warp_path)
+
     generator = PGT_generator(config, args)
 
     dataloader = get_loader(args, config)

@@ -22,6 +22,16 @@ def generate_metadata(args, config, device):
     preprocessor = PreProcess(config, device=device)
     n_img_names = sorted(os.listdir(args.non_makeup_dir))
     m_img_names = sorted(os.listdir(args.makeup_dir))
+
+    if not os.path.exists(args.non_makeup_mask_dir):
+        os.makedirs(args.non_makeup_mask_dir)
+    if not os.path.exists(args.non_makeup_lms_dir):
+        os.makedirs(args.non_makeup_lms_dir)
+    if not os.path.exists(args.makeup_mask_dir):
+        os.makedirs(args.makeup_mask_dir)
+    if not os.path.exists(args.makeup_lms_dir):
+        os.makedirs(args.makeup_lms_dir)
+
     for img_name in n_img_names:
         raw_image = Image.open(os.path.join(args.non_makeup_dir, img_name)).convert('RGB')
 
