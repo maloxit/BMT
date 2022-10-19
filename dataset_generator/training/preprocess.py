@@ -92,9 +92,6 @@ class PreProcess:
     ############################## Landmarks Process ##############################
     def lms_process(self, image: Image):
         face = futils.dlib.detect(image)
-        # face: rectangles, List of rectangles of face region: [(left, top), (right, bottom)]
-        if not face:
-            return None
         face = face[0]
         lms = futils.dlib.landmarks(image, face) * self.img_size / image.width  # scale to fit self.img_size
         # lms: narray, the position of 68 key points, (68 ,2)
@@ -140,9 +137,6 @@ class PreProcess:
         return: image: Image, (H, W), mask: tensor, (1, H, W)
         '''
         face = futils.dlib.detect(image)
-        # face: rectangles, List of rectangles of face region: [(left, top), (right, bottom)]
-        if not face:
-            return None, None, None
 
         face_on_image = face[0]
         face = face[0]
@@ -169,7 +163,7 @@ class PreProcess:
         lms[65:68, 0] += 1
         for i in range(3):
             if torch.sum(torch.abs(lms[61 + i] - lms[67 - i])) == 0:
-                lms[61 + i, 0] -= 1;
+                lms[61 + i, 0] -= 1
                 lms[67 - i, 0] += 1
 
         image = image.resize((self.img_size, self.img_size), Image.ANTIALIAS)
@@ -183,8 +177,6 @@ class PreProcess:
 
     def __call__(self, image: Image, is_crop=True):
         source, face_on_image, crop_face = self.preprocess(image, is_crop)
-        if source is None:
-            return None, None, None
         return self.process(*source), face_on_image, crop_face
 
 
