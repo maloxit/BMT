@@ -6,7 +6,7 @@ import numpy as np
 from PIL import Image
 import dlib
 import cv2
-from concern.image import resize_by_max
+from dataset_generator.concern.image import resize_by_max
 
 detector = dlib.get_frontal_face_detector()
 predictor = dlib.shape_predictor(osp.split(osp.realpath(__file__))[0] + '/shape_predictor_68_face_landmarks.dat')

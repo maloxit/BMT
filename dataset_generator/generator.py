@@ -1,8 +1,8 @@
 from torchvision.transforms import ToPILImage
 import torch
 
-from models.loss import ComposePGT
-from training.config import get_config
+from dataset_generator.models.loss import ComposePGT
+from dataset_generator.config import get_config
 
 
 

@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.transforms import functional
 
-from models.modules.tps_transform import tps_sampler, tps_spatial_transform
+from .tps_transform import tps_sampler, tps_spatial_transform
 
 
 def expand_area(mask:torch.Tensor, margin:int):

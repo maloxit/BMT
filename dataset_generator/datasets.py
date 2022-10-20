@@ -9,9 +9,9 @@ from torchvision.utils import save_image
 import argparse
 from tqdm import tqdm
 
-from training.config import get_config
-from training.preprocess import PreProcess
-from generator import PGT_generator
+from dataset_generator.generator import PGT_generator
+from dataset_generator.config import get_config
+from dataset_generator.training.preprocess import PreProcess
 
 
 def generate_metadata(args, config, device):

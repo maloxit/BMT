@@ -1,1 +1,1 @@
-from . import datasets, generator
+from . import datasets, config

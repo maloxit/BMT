@@ -7,11 +7,9 @@ import torch.nn.functional as F
 from torchvision import transforms
 from torchvision.transforms import functional
 
-import sys
-sys.path.append('.')
 
-import faceutils as futils
-from training.config import get_config
+from dataset_generator import faceutils as futils
+from dataset_generator.config import get_config
 
 
 class PreProcess:

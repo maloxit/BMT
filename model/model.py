@@ -1,5 +1,5 @@
-import networks
-from networks import init_net
+from model import networks
+from model.networks import init_net
 import torch
 import torch.nn as nn
 
