@@ -5,10 +5,13 @@ import random
 import numpy as np
 from PIL import Image
 import torch.utils.data as data
+import sys
+sys.path.append('.')
+from dataset_generator.datasets import GeneratorManager
 
 
-def create_dataloader(opts):
-    dataset = MakeupDataset(opts)
+def create_dataloader(opts, device):
+    dataset = MakeupDataset(opts, device=device)
     dataloader = data.DataLoader(dataset, batch_size=1, shuffle=True, num_workers=opts.nThreads)
     return dataloader
 
@@ -16,25 +19,27 @@ def create_dataloader(opts):
 class MakeupDataset(data.Dataset):
     """import dataset"""
 
-    def __init__(self, opts):
+    def __init__(self, opts, device):
         """init"""
         self.opt = opts
         self.phase = opts.phase
-        self.dataroot = opts.dataroot
         self.semantic_dim = opts.semantic_dim
+        self.non_makeup_dir = opts.non_makeup_dir
+        self.non_makeup_mask_dir = opts.non_makeup_mask_dir
+        self.makeup_dir = opts.makeup_dir
+        self.makeup_mask_dir = opts.makeup_mask_dir
+        self.warp_path = opts.warp_path
+
+        self.generator = GeneratorManager(opts, device)
 
         # non_makeup
-        name_non_makeup = os.listdir(os.path.join(self.dataroot, 'non-makeup'))
-        self.non_makeup_path = [os.path.join(self.dataroot, 'non-makeup', x) for x in name_non_makeup]
+        self.name_non_makeup = os.listdir(os.path.join(self.non_makeup_dir, 'non-makeup'))
 
         # makeup
-        name_makeup = os.listdir(os.path.join(self.dataroot, 'makeup'))
-        self.makeup_path = [os.path.join(self.dataroot, 'makeup', x) for x in name_makeup]
+        self.name_makeup = os.listdir(os.path.join(self.makeup_dir, 'makeup'))
 
-        self.warproot = os.path.join(self.dataroot, 'warp')
-
-        self.non_makeup_size = len(self.non_makeup_path)
-        self.makeup_size = len(self.makeup_path)
+        self.non_makeup_size = len(self.name_non_makeup)
+        self.makeup_size = len(self.name_makeup)
         print('non_makeup size:', self.non_makeup_size, 'makeup size:', self.makeup_size)
         if self.phase == 'train':
             self.dataset_size = self.non_makeup_size * self.makeup_size
@@ -72,35 +77,35 @@ class MakeupDataset(data.Dataset):
             else:
                 non_makeup_angle = 0
                 makeup_angle = 0
-            non_makeup_index = index // self.makeup_size
-            makeup_index = index % self.makeup_size
+            non_makeup_index = index
             # load non-makeup
-            non_makeup_img = self.load_img(self.non_makeup_path[non_makeup_index], non_makeup_angle)
-            non_makeup_mask = self.load_img(self.non_makeup_path[non_makeup_index].replace('images', 'seg1'), non_makeup_angle)
-            non_makeup_parse = self.load_parse(self.non_makeup_path[non_makeup_index].replace('images', 'seg1'), non_makeup_angle)
+            non_makeup_img = self.load_img(os.path.join(self.non_makeup_dir, 'non-makeup', self.name_non_makeup[non_makeup_index]), non_makeup_angle)
+            non_makeup_parse = self.load_parse(os.path.join(self.non_makeup_mask_dir, 'non-makeup', self.name_non_makeup[non_makeup_index]), non_makeup_angle)
 
             # load makeup
-            index_other = random.randint(0, self.makeup_size - 1)
-            makeup_img = self.load_img(self.makeup_path[makeup_index], makeup_angle)
-            makeup_mask = self.load_img(self.makeup_path[makeup_index].replace('images', 'seg1'), makeup_angle)
-            makeup_parse = self.load_parse(self.makeup_path[makeup_index].replace('images', 'seg1'), makeup_angle)
+            makeup_index = random.randint(0, self.makeup_size - 1)
+            makeup_img = self.load_img(os.path.join(self.makeup_dir, 'non-makeup', self.name_makeup[makeup_index]), makeup_angle)
+            makeup_parse = self.load_parse(os.path.join(self.makeup_mask_dir, 'non-makeup', self.name_makeup[makeup_index]), makeup_angle)
 
             # load groundtrue
-            non_makeup_name = os.path.splitext(os.path.basename(self.non_makeup_path[non_makeup_index]))[0]
-            makeup_name = os.path.splitext(os.path.basename(self.makeup_path[makeup_index]))[0]
+            non_makeup_name = os.path.splitext(self.name_non_makeup[non_makeup_index])[0]
+            makeup_name = os.path.splitext(self.name_makeup[makeup_index])[0]
             removal_name = makeup_name + '_' + non_makeup_name + '.png'
             transfer_name = non_makeup_name + '_' + makeup_name + '.png'
-            if os.path.exists(os.path.join(self.warproot, transfer_name)):
-                transfer_img = self.load_img(os.path.join(self.warproot, transfer_name))
-            if os.path.exists(os.path.join(self.warproot, removal_name)):
-                removal_img = self.load_img(os.path.join(self.warproot, removal_name))
-            transfer_img = self.rotate(transfer_img, non_makeup_angle)
-            removal_img = self.rotate(removal_img, makeup_angle)
+            modes = ['None', 'transfer', 'removal', 'both']
+            mode = 0
+            if not os.path.exists(os.path.join(self.warp_path, transfer_name)):
+                mode += 1
+            if not os.path.exists(os.path.join(self.warp_path, removal_name)):
+                mode += 2
+            mode = modes[mode]
+            self.generator.generate(self.name_non_makeup[non_makeup_index], self.name_makeup[makeup_index], mode=mode)
+            transfer_img = self.load_img(os.path.join(self.warp_path, transfer_name), non_makeup_angle)
+            removal_img = self.load_img(os.path.join(self.warp_path, removal_name), makeup_angle)
 
             # preprocessing
             data = self.preprocessing(opts=self.opt, non_makeup_img=non_makeup_img, makeup_img=makeup_img,
                                       transfer_img=transfer_img, removal_img=removal_img,
-                                      non_makeup_mask=non_makeup_mask, makeup_mask=makeup_mask,
                                       non_makeup_parse=non_makeup_parse, makeup_parse=makeup_parse)
 
             non_makeup_img = data['non_makeup']

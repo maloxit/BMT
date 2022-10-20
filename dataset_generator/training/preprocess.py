@@ -1,5 +1,4 @@
 import os
-import sys
 import cv2
 from PIL import Image
 import numpy as np
@@ -8,6 +7,7 @@ import torch.nn.functional as F
 from torchvision import transforms
 from torchvision.transforms import functional
 
+import sys
 sys.path.append('.')
 
 import faceutils as futils

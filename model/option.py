@@ -15,9 +15,14 @@ class MakeupOptions:
         self.opt = None
         self.parser = argparse.ArgumentParser()
         # data loader related
-        self.parser.add_argument('--dataroot', type=str, default='./dataset/images/', help='path of data')
         self.parser.add_argument('--phase', type=str, default='train', help='phase for dataloading')
-        self.parser.add_argument('--dataset_size', type=int, default=300, help='dataset_size')
+        self.parser.add_argument("--warp-path", type=str, default='result', help="path to warp results")
+        self.parser.add_argument("--non-makeup-dir", type=str, default="assets/images/non-makeup")
+        self.parser.add_argument("--non-makeup-mask-dir", type=str, default="assets/seg/non-makeup")
+        self.parser.add_argument("--non-makeup-lms-dir", type=str, default="assets/lms/non-makeup")
+        self.parser.add_argument("--makeup-dir", type=str, default="assets/images/makeup")
+        self.parser.add_argument("--makeup-mask-dir", type=str, default="assets/seg/makeup")
+        self.parser.add_argument("--makeup-lms-dir", type=str, default="assets/lms/makeup")
 
         self.parser.add_argument('--input_dim', type=int, default=3, help='input_dim')
         self.parser.add_argument('--output_dim', type=int, default=3, help='output_dim')

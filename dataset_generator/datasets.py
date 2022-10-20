@@ -110,43 +110,63 @@ class PGTGeneratorDataset(Dataset):
         return len(self.n_img_names) * len(self.m_img_names)
 
 
-def get_loader(args, config):
-    dataset = PGTGeneratorDataset(args, config, device=args.device)
-    dataloader = DataLoader(dataset=dataset,
-                            batch_size=config.DATA.BATCH_SIZE,
-                            num_workers=config.DATA.NUM_WORKERS)
-    return dataloader
+class GeneratorManager:
+    def __init__(self, args, device):
+        self.config = get_config()
+        self.warp_path = args.warp_path
 
+        if not os.path.exists(args.warp_path):
+            os.makedirs(args.warp_path)
 
-def main(config, args):
-    if not args.skip_metadata:
-        generate_metadata(args, config, args.device)
-    if args.metadata_only:
-        return
+        self.generator = PGT_generator(device)
+        self.dataset = PGTGeneratorDataset(args, self.config, device=device)
 
-    if not os.path.exists(args.warp_path):
-        os.makedirs(args.warp_path)
+    def generate_dataset(self):
+        dataloader = DataLoader(dataset=self.dataset,
+                                batch_size=self.config.DATA.BATCH_SIZE,
+                                num_workers=self.config.DATA.NUM_WORKERS)
+        for data in tqdm(dataloader):
+            non_make_up_name = data['non_make_up_name'][0]
+            non_makeup = data['non_makeup']
+            make_up_name = data['make_up_name'][0]
+            makeup = data['makeup']
+            non_makeup = self.generator.prepare_input(*non_makeup)
+            makeup = self.generator.prepare_input(*makeup)
+            transfer = self.generator.transfer(non_makeup, makeup)
+            removal = self.generator.transfer(makeup, non_makeup)
 
-    generator = PGT_generator(config, args)
+            non_make_up_name_base = os.path.splitext(non_make_up_name)[0]
+            make_up_name_base = os.path.splitext(make_up_name)[0]
+            transfer_save_path = os.path.join(self.warp_path, f"{non_make_up_name_base}_{make_up_name_base}.png")
+            save_image(transfer, transfer_save_path)
+            removal_save_path = os.path.join(self.warp_path, f"{make_up_name_base}_{non_make_up_name_base}.png")
+            save_image(removal, removal_save_path)
 
-    dataloader = get_loader(args, config)
-
-    for data in tqdm(dataloader):
-        non_make_up_name = data['non_make_up_name'][0]
-        non_makeup = data['non_makeup']
-        make_up_name = data['make_up_name'][0]
-        makeup = data['makeup']
-        non_makeup = generator.prepare_input(*non_makeup)
-        makeup = generator.prepare_input(*makeup)
-        transfer = generator.transfer(non_makeup, makeup)
-        removal = generator.transfer(makeup, non_makeup)
-
+    def generate(self, non_make_up_name, make_up_name, mode='both'):
+        non_makeup = self.dataset.load_from_file(
+            non_make_up_name,
+            self.dataset.non_makeup_dir,
+            self.dataset.non_makeup_mask_dir,
+            self.dataset.non_makeup_lms_dir
+        )
+        makeup = self.dataset.load_from_file(
+            make_up_name,
+            self.dataset.makeup_dir,
+            self.dataset.makeup_mask_dir,
+            self.dataset.makeup_lms_dir
+        )
+        non_makeup = self.generator.prepare_input(*non_makeup, need_batches=True)
+        makeup = self.generator.prepare_input(*makeup, need_batches=True)
         non_make_up_name_base = os.path.splitext(non_make_up_name)[0]
         make_up_name_base = os.path.splitext(make_up_name)[0]
-        transfer_save_path = os.path.join(args.warp_path, f"{non_make_up_name_base}_{make_up_name_base}.png")
-        save_image(transfer, transfer_save_path)
-        removal_save_path = os.path.join(args.warp_path, f"{make_up_name_base}_{non_make_up_name_base}.png")
-        save_image(removal, removal_save_path)
+        if mode in ('both', 'transfer'):
+            transfer = self.generator.transfer(non_makeup, makeup)
+            transfer_save_path = os.path.join(self.warp_path, f"{non_make_up_name_base}_{make_up_name_base}.png")
+            save_image(transfer, transfer_save_path)
+        if mode in ('both', 'removal'):
+            removal = self.generator.transfer(makeup, non_makeup)
+            removal_save_path = os.path.join(self.warp_path, f"{make_up_name_base}_{non_make_up_name_base}.png")
+            save_image(removal, removal_save_path)
 
 
 if __name__ == "__main__":
@@ -172,4 +192,8 @@ if __name__ == "__main__":
         args.device = torch.device('cpu')
 
     config = get_config()
-    main(config, args)
+    if not args.skip_metadata:
+        generate_metadata(args, config, args.device)
+    if not args.metadata_only:
+        generator_manager = GeneratorManager(args, args.device)
+        generator_manager.generate_dataset()

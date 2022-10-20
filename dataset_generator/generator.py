@@ -2,13 +2,15 @@ from torchvision.transforms import ToPILImage
 import torch
 
 from models.loss import ComposePGT
+from training.config import get_config
 
 
 
 class PGT_generator():
 
-    def __init__(self, config, args):
+    def __init__(self, device):
         # Data & PGT
+        config = get_config()
         self.img_size = config.DATA.IMG_SIZE
         self.margins = {
             'eye': config.PGT.EYE_MARGIN,
@@ -22,7 +24,7 @@ class PGT_generator():
         )
         self.pgt_maker.eval()
 
-        self.device = args.device
+        self.device = device
 
         super(PGT_generator, self).__init__()
 
