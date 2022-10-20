@@ -103,6 +103,7 @@ class PGTGeneratorDataset(Dataset):
         non_makeup = self.load_from_file(non_make_up_name, self.non_makeup_dir, self.non_makeup_mask_dir, self.non_makeup_lms_dir)
         makeup = self.load_from_file(make_up_name, self.makeup_dir, self.makeup_mask_dir, self.makeup_lms_dir)
         data = {
+            'index': index,
             'non_make_up_name': non_make_up_name,
             'non_makeup': non_makeup,
             'make_up_name': make_up_name,
@@ -133,13 +134,13 @@ class GeneratorManager:
 
     def generate_dataset(self):
         dataloader = DataLoader(dataset=self.dataset,
-                                batch_size=self.config.DATA.BATCH_SIZE,
-                                num_workers=self.config.DATA.NUM_WORKERS)
-        for i, data in enumerate(tqdm(dataloader)):
-            if i % self.storage_every == 0:
-                self.move_to_storage()
+                                batch_size=1,
+                                num_workers=1)
+        for data in tqdm(dataloader):
             if data is None:
                 continue
+            if data['index'][0] % self.storage_every == 0:
+                self.move_to_storage()
             non_make_up_name = data['non_make_up_name'][0]
             non_makeup = data['non_makeup']
             make_up_name = data['make_up_name'][0]
