@@ -42,7 +42,7 @@ class MakeupDataset(data.Dataset):
         self.makeup_size = len(self.name_makeup)
         print('non_makeup size:', self.non_makeup_size, 'makeup size:', self.makeup_size)
         if self.phase == 'train':
-            self.dataset_size = self.non_makeup_size * self.makeup_size
+            self.dataset_size = self.non_makeup_size
         else:
             self.dataset_size = self.non_makeup_size * self.makeup_size
 
