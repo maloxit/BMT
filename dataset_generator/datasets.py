@@ -77,6 +77,7 @@ class PGTGeneratorDataset(Dataset):
         self.makeup_lms_dir = args.makeup_lms_dir
         self.n_img_names = sorted(os.listdir(args.non_makeup_dir))
         self.m_img_names = sorted(os.listdir(args.makeup_dir))
+        self.skip_to_index = args.skip_to_index
         if self.n_img_names[0].startswith('.ipynb'):
             self.n_img_names.pop(0)
         if self.m_img_names[0].startswith('.ipynb'):
@@ -92,6 +93,8 @@ class PGTGeneratorDataset(Dataset):
         return self.preprocessor.process(image, mask, lms)
 
     def __getitem__(self, index):
+        if index < self.skip_to_index:
+            return None
         non_make_up_index = index // len(self.m_img_names)
         make_up_index = index % len(self.m_img_names)
         non_make_up_name = self.n_img_names[non_make_up_index]
@@ -126,6 +129,8 @@ class GeneratorManager:
                                 batch_size=self.config.DATA.BATCH_SIZE,
                                 num_workers=self.config.DATA.NUM_WORKERS)
         for data in tqdm(dataloader):
+            if data is None:
+                continue
             non_make_up_name = data['non_make_up_name'][0]
             non_makeup = data['non_makeup']
             make_up_name = data['make_up_name'][0]
@@ -183,6 +188,7 @@ def run():
     parser.add_argument("--gpu", default='0', type=str, help="GPU id to use.")
     parser.add_argument("--skip-metadata", action='store_true', help="Do not generate metadata.")
     parser.add_argument("--metadata-only", action='store_true', help="Only generate metadata.")
+    parser.add_argument("--skip-to-index", type=int, default=-1)
 
     args = parser.parse_args()
     args.gpu = 'cuda:' + args.gpu
