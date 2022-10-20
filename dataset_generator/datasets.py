@@ -135,7 +135,7 @@ class GeneratorManager:
         dataloader = DataLoader(dataset=self.dataset,
                                 batch_size=self.config.DATA.BATCH_SIZE,
                                 num_workers=self.config.DATA.NUM_WORKERS)
-        for i, data in tqdm(enumerate(dataloader)):
+        for i, data in enumerate(tqdm(dataloader)):
             if i % self.storage_every == 0:
                 self.move_to_storage()
             if data is None:
