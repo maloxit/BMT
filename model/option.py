@@ -16,7 +16,6 @@ class MakeupOptions:
         self.parser = argparse.ArgumentParser()
         # data loader related
         self.parser.add_argument('--dataroot', type=str, default='./dataset/images/', help='path of data')
-        # self.parser.add_argument('--dataroot', type=str, default='./test_front/images/', help='path of data')
         self.parser.add_argument('--phase', type=str, default='train', help='phase for dataloading')
         self.parser.add_argument('--dataset_size', type=int, default=300, help='dataset_size')
 

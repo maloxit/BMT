@@ -286,12 +286,12 @@ class Dis(nn.Module):
     def __init__(self, input_dim):
         super(Dis, self).__init__()
         ch = 32
-        n_layer = 5
+        n_layer = 4
         modules = []
         modules += [LeakyReLUConv2d(in_planes=input_dim, out_planes=ch, kernel_size=3, padding=1, stride=2,
                                     relu_slope=0.2, use_norm=False)]
         tch = ch
-        for i in range(1, n_layer):
+        for i in range(0, n_layer):
             modules += [LeakyReLUConv2d(in_planes=tch, out_planes=tch * 2, kernel_size=3, padding=1, stride=2,
                                         relu_slope=0.2, use_norm=False)]
             tch *= 2
@@ -308,7 +308,7 @@ class Dis(nn.Module):
 
 
 class MultiScaleDis(nn.Module):
-    def __init__(self, input_dim, n_scale=3, n_layer=4):
+    def __init__(self, input_dim, n_scale=3, n_layer=3):
         super(MultiScaleDis, self).__init__()
         ch = 32
         self.downsample = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)
@@ -321,7 +321,7 @@ class MultiScaleDis(nn.Module):
         model.append(LeakyReLUConv2d(in_planes=input_dim, out_planes=ch, kernel_size=4, padding=1, stride=2,
                                      relu_slope=0.2, use_norm=False))
         tch = ch
-        for _ in range(1, n_layer):
+        for _ in range(0, n_layer):
             model.append(LeakyReLUConv2d(in_planes=tch, out_planes=tch * 2, kernel_size=4, padding=1, stride=2,
                                          relu_slope=0.2, use_norm=False))
             tch *= 2

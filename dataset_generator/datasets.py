@@ -5,19 +5,14 @@ import cv2
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
-from itertools import product
+from torchvision.utils import save_image
+import argparse
 from tqdm import tqdm
 
 from training.config import get_config
 from training.preprocess import PreProcess
+from generator import PGT_generator
 
-
-def get_loader(args, config):
-    dataset = PGTGeneratorDataset(args, config, device=args.device)
-    dataloader = DataLoader(dataset=dataset,
-                            batch_size=config.DATA.BATCH_SIZE,
-                            num_workers=config.DATA.NUM_WORKERS)
-    return dataloader
 
 def generate_metadata(args, config, device):
     preprocessor = PreProcess(config, device=device)
@@ -114,3 +109,67 @@ class PGTGeneratorDataset(Dataset):
     def __len__(self):
         return len(self.n_img_names) * len(self.m_img_names)
 
+
+def get_loader(args, config):
+    dataset = PGTGeneratorDataset(args, config, device=args.device)
+    dataloader = DataLoader(dataset=dataset,
+                            batch_size=config.DATA.BATCH_SIZE,
+                            num_workers=config.DATA.NUM_WORKERS)
+    return dataloader
+
+
+def main(config, args):
+    if not args.skip_metadata:
+        generate_metadata(args, config, args.device)
+    if args.metadata_only:
+        return
+
+    if not os.path.exists(args.warp_path):
+        os.makedirs(args.warp_path)
+
+    generator = PGT_generator(config, args)
+
+    dataloader = get_loader(args, config)
+
+    for data in tqdm(dataloader):
+        non_make_up_name = data['non_make_up_name'][0]
+        non_makeup = data['non_makeup']
+        make_up_name = data['make_up_name'][0]
+        makeup = data['makeup']
+        non_makeup = generator.prepare_input(*non_makeup)
+        makeup = generator.prepare_input(*makeup)
+        transfer = generator.transfer(non_makeup, makeup)
+        removal = generator.transfer(makeup, non_makeup)
+
+        non_make_up_name_base = os.path.splitext(non_make_up_name)[0]
+        make_up_name_base = os.path.splitext(make_up_name)[0]
+        transfer_save_path = os.path.join(args.warp_path, f"{non_make_up_name_base}_{make_up_name_base}.png")
+        save_image(transfer, transfer_save_path)
+        removal_save_path = os.path.join(args.warp_path, f"{make_up_name_base}_{non_make_up_name_base}.png")
+        save_image(removal, removal_save_path)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser("argument for training")
+    parser.add_argument("--name", type=str, default='demo')
+    parser.add_argument("--warp-path", type=str, default='result', help="path to warp results")
+
+    parser.add_argument("--non-makeup-dir", type=str, default="assets/images/non-makeup")
+    parser.add_argument("--non-makeup-mask-dir", type=str, default="assets/seg/non-makeup")
+    parser.add_argument("--non-makeup-lms-dir", type=str, default="assets/lms/non-makeup")
+    parser.add_argument("--makeup-dir", type=str, default="assets/images/makeup")
+    parser.add_argument("--makeup-mask-dir", type=str, default="assets/seg/makeup")
+    parser.add_argument("--makeup-lms-dir", type=str, default="assets/lms/makeup")
+    parser.add_argument("--gpu", default='0', type=str, help="GPU id to use.")
+    parser.add_argument("--skip-metadata", action='store_true', help="Do not generate metadata.")
+    parser.add_argument("--metadata-only", action='store_true', help="Only generate metadata.")
+
+    args = parser.parse_args()
+    args.gpu = 'cuda:' + args.gpu
+    if torch.cuda.is_available():
+        args.device = torch.device(args.gpu)
+    else:
+        args.device = torch.device('cpu')
+
+    config = get_config()
+    main(config, args)

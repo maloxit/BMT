@@ -74,7 +74,6 @@ class MakeupDataset(data.Dataset):
                 makeup_angle = 0
             non_makeup_index = index // self.makeup_size
             makeup_index = index % self.makeup_size
-            # print('non_makeup_angle',non_makeup_angle,'makeup_angle',makeup_angle)
             # load non-makeup
             non_makeup_img = self.load_img(self.non_makeup_path[non_makeup_index], non_makeup_angle)
             non_makeup_mask = self.load_img(self.non_makeup_path[non_makeup_index].replace('images', 'seg1'), non_makeup_angle)
@@ -87,15 +86,14 @@ class MakeupDataset(data.Dataset):
             makeup_parse = self.load_parse(self.makeup_path[makeup_index].replace('images', 'seg1'), makeup_angle)
 
             # load groundtrue
-            non_makeup_name = os.path.basename(self.non_makeup_path[non_makeup_index])[:-4]
-            makeup_name = os.path.basename(self.makeup_path[makeup_index])[:-4]
+            non_makeup_name = os.path.splitext(os.path.basename(self.non_makeup_path[non_makeup_index]))[0]
+            makeup_name = os.path.splitext(os.path.basename(self.makeup_path[makeup_index]))[0]
             removal_name = makeup_name + '_' + non_makeup_name + '.png'
             transfer_name = non_makeup_name + '_' + makeup_name + '.png'
-            transfer_img = self.load_img(os.path.join(self.warproot, transfer_name))
-            removal_img = self.load_img(os.path.join(self.warproot, removal_name))
-            h, w, c = transfer_img.shape
-            #transfer_img = transfer_img[:, 2 * h:3 * h, :]
-            #removal_img = removal_img[:, 2 * h:3 * h, :]
+            if os.path.exists(os.path.join(self.warproot, transfer_name)):
+                transfer_img = self.load_img(os.path.join(self.warproot, transfer_name))
+            if os.path.exists(os.path.join(self.warproot, removal_name)):
+                removal_img = self.load_img(os.path.join(self.warproot, removal_name))
             transfer_img = self.rotate(transfer_img, non_makeup_angle)
             removal_img = self.rotate(removal_img, makeup_angle)
 
@@ -136,18 +134,15 @@ class MakeupDataset(data.Dataset):
             print(self.non_makeup_size, self.makeup_size, non_makeup_index + 1, makeup_index + 1)
 
             non_makeup_img = self.load_img(self.non_makeup_path[non_makeup_index])
-            non_makeup_mask = self.load_img(self.non_makeup_path[non_makeup_index].replace('images', 'seg1'))
             non_makeup_parse = self.load_parse(self.non_makeup_path[non_makeup_index].replace('images', 'seg1'))
 
             # load makeup
             makeup_img = self.load_img(self.makeup_path[makeup_index])
-            makeup_mask = self.load_img(self.makeup_path[makeup_index].replace('images', 'seg1'))
             makeup_parse = self.load_parse(self.makeup_path[makeup_index].replace('images', 'seg1'))
 
             # preprocessing
             data = self.preprocessing(opts=self.opt, non_makeup_img=non_makeup_img, makeup_img=makeup_img,
                                       transfer_img=non_makeup_img, removal_img=makeup_img,
-                                      non_makeup_mask=non_makeup_mask, makeup_mask=makeup_mask,
                                       non_makeup_parse=non_makeup_parse, makeup_parse=makeup_parse)
 
             non_makeup_img = data['non_makeup']
@@ -172,23 +167,13 @@ class MakeupDataset(data.Dataset):
     def __len__(self):
         return self.dataset_size
 
-    def expand_mask(self, mask):
-        mask = np.expand_dims(mask, axis=2)
-        mask = np.concatenate((mask, mask, mask), axis=2)
-        return mask
-
-    def preprocessing(self, opts, non_makeup_img, makeup_img, transfer_img, removal_img, non_makeup_mask, makeup_mask,
+    def preprocessing(self, opts, non_makeup_img, makeup_img, transfer_img, removal_img,
                       non_makeup_parse, makeup_parse):
         non_makeup_img = cv2.resize(non_makeup_img, (opts.resize_size, opts.resize_size))
         makeup_img = cv2.resize(makeup_img, (opts.resize_size, opts.resize_size))
 
         transfer_img = cv2.resize(transfer_img, (opts.resize_size, opts.resize_size))
         removal_img = cv2.resize(removal_img, (opts.resize_size, opts.resize_size))
-
-        non_makeup_mask = cv2.resize(non_makeup_mask, (opts.resize_size, opts.resize_size),
-                                     interpolation=cv2.INTER_NEAREST)
-        makeup_mask = cv2.resize(makeup_mask, (opts.resize_size, opts.resize_size),
-                                 interpolation=cv2.INTER_NEAREST)
 
         non_makeup_parse = cv2.resize(non_makeup_parse, (opts.resize_size, opts.resize_size),
                                       interpolation=cv2.INTER_NEAREST)
