@@ -33,10 +33,10 @@ class MakeupDataset(data.Dataset):
         self.generator = GeneratorManager(opts, device)
 
         # non_makeup
-        self.name_non_makeup = os.listdir(os.path.join(self.non_makeup_dir, 'non-makeup'))
+        self.name_non_makeup = os.listdir(self.non_makeup_dir)
 
         # makeup
-        self.name_makeup = os.listdir(os.path.join(self.makeup_dir, 'makeup'))
+        self.name_makeup = os.listdir(self.makeup_dir)
 
         self.non_makeup_size = len(self.name_non_makeup)
         self.makeup_size = len(self.name_makeup)
@@ -79,13 +79,13 @@ class MakeupDataset(data.Dataset):
                 makeup_angle = 0
             non_makeup_index = index
             # load non-makeup
-            non_makeup_img = self.load_img(os.path.join(self.non_makeup_dir, 'non-makeup', self.name_non_makeup[non_makeup_index]), non_makeup_angle)
-            non_makeup_parse = self.load_parse(os.path.join(self.non_makeup_mask_dir, 'non-makeup', self.name_non_makeup[non_makeup_index]), non_makeup_angle)
+            non_makeup_img = self.load_img(os.path.join(self.non_makeup_dir, self.name_non_makeup[non_makeup_index]), non_makeup_angle)
+            non_makeup_parse = self.load_parse(os.path.join(self.non_makeup_mask_dir, self.name_non_makeup[non_makeup_index]), non_makeup_angle)
 
             # load makeup
             makeup_index = random.randint(0, self.makeup_size - 1)
-            makeup_img = self.load_img(os.path.join(self.makeup_dir, 'non-makeup', self.name_makeup[makeup_index]), makeup_angle)
-            makeup_parse = self.load_parse(os.path.join(self.makeup_mask_dir, 'non-makeup', self.name_makeup[makeup_index]), makeup_angle)
+            makeup_img = self.load_img(os.path.join(self.makeup_dir, self.name_makeup[makeup_index]), makeup_angle)
+            makeup_parse = self.load_parse(os.path.join(self.makeup_mask_dir, self.name_makeup[makeup_index]), makeup_angle)
 
             # load groundtrue
             non_makeup_name = os.path.splitext(self.name_non_makeup[non_makeup_index])[0]
@@ -138,12 +138,12 @@ class MakeupDataset(data.Dataset):
             # makeup_index = index
             print(self.non_makeup_size, self.makeup_size, non_makeup_index + 1, makeup_index + 1)
 
-            non_makeup_img = self.load_img(self.non_makeup_path[non_makeup_index])
-            non_makeup_parse = self.load_parse(self.non_makeup_path[non_makeup_index].replace('images', 'seg1'))
+            non_makeup_img = self.load_img(os.path.join(self.non_makeup_dir, self.name_non_makeup[non_makeup_index]))
+            non_makeup_parse = self.load_parse(os.path.join(self.non_makeup_mask_dir, self.name_non_makeup[non_makeup_index]))
 
             # load makeup
-            makeup_img = self.load_img(self.makeup_path[makeup_index])
-            makeup_parse = self.load_parse(self.makeup_path[makeup_index].replace('images', 'seg1'))
+            makeup_img = self.load_img(os.path.join(self.makeup_dir, self.name_makeup[makeup_index]))
+            makeup_parse = self.load_parse(os.path.join(self.makeup_mask_dir, self.name_makeup[makeup_index]))
 
             # preprocessing
             data = self.preprocessing(opts=self.opt, non_makeup_img=non_makeup_img, makeup_img=makeup_img,
