@@ -95,7 +95,7 @@ class PGTGeneratorDataset(Dataset):
 
     def __getitem__(self, index):
         if index < self.skip_to_index:
-            return None
+            return {}
         non_make_up_index = index // len(self.m_img_names)
         make_up_index = index % len(self.m_img_names)
         non_make_up_name = self.n_img_names[non_make_up_index]
@@ -137,7 +137,7 @@ class GeneratorManager:
                                 batch_size=1,
                                 num_workers=1)
         for data in tqdm(dataloader):
-            if data is None:
+            if len(data) == 0:
                 continue
             if data['index'][0] % self.storage_every == 0:
                 self.move_to_storage()
