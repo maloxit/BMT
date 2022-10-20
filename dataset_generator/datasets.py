@@ -1,4 +1,5 @@
 import os
+import shutil
 from PIL import Image
 import numpy as np
 import cv2
@@ -117,18 +118,26 @@ class GeneratorManager:
     def __init__(self, args, device):
         self.config = get_config()
         self.warp_path = args.warp_path
-
+        self.warp_storage = args.warp_storage
+        self.storage_every = args.storage_every
         if not os.path.exists(args.warp_path):
             os.makedirs(args.warp_path)
 
         self.generator = PGT_generator(device)
         self.dataset = PGTGeneratorDataset(args, self.config, device=device)
 
+    def move_to_storage(self):
+        warp_names = os.listdir(self.warp_path)
+        for warp_name in warp_names:
+            shutil.move(os.path.join(self.warp_path, warp_name), os.path.join(self.warp_storage, warp_name))
+
     def generate_dataset(self):
         dataloader = DataLoader(dataset=self.dataset,
                                 batch_size=self.config.DATA.BATCH_SIZE,
                                 num_workers=self.config.DATA.NUM_WORKERS)
-        for data in tqdm(dataloader):
+        for i, data in tqdm(enumerate(dataloader)):
+            if i % self.storage_every == 0:
+                self.move_to_storage()
             if data is None:
                 continue
             non_make_up_name = data['non_make_up_name'][0]
@@ -178,6 +187,9 @@ def run():
     parser = argparse.ArgumentParser("argument for training")
     parser.add_argument("--name", type=str, default='demo')
     parser.add_argument("--warp-path", type=str, default='result', help="path to warp results")
+    parser.add_argument("--warp-storage", type=str, default='result_storage')
+    parser.add_argument("--storage-every", type=int, default=600)
+    parser.add_argument("--skip-to-index", type=int, default=-1)
 
     parser.add_argument("--non-makeup-dir", type=str, default="assets/images/non-makeup")
     parser.add_argument("--non-makeup-mask-dir", type=str, default="assets/seg/non-makeup")
@@ -188,7 +200,6 @@ def run():
     parser.add_argument("--gpu", default='0', type=str, help="GPU id to use.")
     parser.add_argument("--skip-metadata", action='store_true', help="Do not generate metadata.")
     parser.add_argument("--metadata-only", action='store_true', help="Only generate metadata.")
-    parser.add_argument("--skip-to-index", type=int, default=-1)
 
     args = parser.parse_args()
     args.gpu = 'cuda:' + args.gpu
