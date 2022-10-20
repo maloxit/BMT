@@ -169,7 +169,7 @@ class GeneratorManager:
             save_image(removal, removal_save_path)
 
 
-if __name__ == "__main__":
+def run():
     parser = argparse.ArgumentParser("argument for training")
     parser.add_argument("--name", type=str, default='demo')
     parser.add_argument("--warp-path", type=str, default='result', help="path to warp results")
