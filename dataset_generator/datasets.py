@@ -130,6 +130,8 @@ class GeneratorManager:
     def move_to_storage(self):
         warp_names = os.listdir(self.warp_path)
         for warp_name in warp_names:
+            if warp_name.startswith('.ipynb'):
+                continue
             shutil.move(os.path.join(self.warp_path, warp_name), os.path.join(self.warp_storage, warp_name))
 
     def generate_dataset(self):

@@ -1,5 +1,6 @@
 import os
 import cv2
+import shutil
 import copy
 import random
 import numpy as np
@@ -29,6 +30,8 @@ class MakeupDataset(data.Dataset):
         self.makeup_dir = opts.makeup_dir
         self.makeup_mask_dir = opts.makeup_mask_dir
         self.warp_path = opts.warp_path
+        self.warp_alt_path = opts.warp_alt_path
+        self.warp_storage = opts.warp_storage
 
         self.generator = GeneratorManager(opts, device)
 
@@ -69,6 +72,15 @@ class MakeupDataset(data.Dataset):
 
         return img
 
+    def move_warp_to_storage(self):
+        warp_names = os.listdir(self.warp_path)
+        for warp_name in warp_names:
+            if warp_name.startswith('.ipynb'):
+                continue
+            shutil.copy(os.path.join(self.warp_path, warp_name), os.path.join(self.warp_alt_path, warp_name))
+            shutil.move(os.path.join(self.warp_path, warp_name), os.path.join(self.warp_storage, warp_name))
+
+
     def __getitem__(self, index):
         if self.phase == 'train':
             if np.random.random() > 0.5:
@@ -94,14 +106,20 @@ class MakeupDataset(data.Dataset):
             transfer_name = non_makeup_name + '_' + makeup_name + '.png'
             modes = ['None', 'transfer', 'removal', 'both']
             mode = 0
-            if not os.path.exists(os.path.join(self.warp_path, transfer_name)):
-                mode += 1
-            if not os.path.exists(os.path.join(self.warp_path, removal_name)):
-                mode += 2
+            transfer_path = os.path.join(self.warp_alt_path, transfer_name)
+            if not os.path.exists(transfer_path):
+                transfer_path = os.path.join(self.warp_path, transfer_name)
+                if not os.path.exists(transfer_path):
+                    mode += 1
+            removal_path = os.path.join(self.warp_alt_path, removal_name)
+            if not os.path.exists(removal_path):
+                removal_path = os.path.join(self.warp_path, removal_name)
+                if not os.path.exists(removal_path):
+                    mode += 2
             mode = modes[mode]
             self.generator.generate(self.name_non_makeup[non_makeup_index], self.name_makeup[makeup_index], mode=mode)
-            transfer_img = self.load_img(os.path.join(self.warp_path, transfer_name), non_makeup_angle)
-            removal_img = self.load_img(os.path.join(self.warp_path, removal_name), makeup_angle)
+            transfer_img = self.load_img(transfer_path, non_makeup_angle)
+            removal_img = self.load_img(removal_path, makeup_angle)
 
             # preprocessing
             data = self.preprocessing(opts=self.opt, non_makeup_img=non_makeup_img, makeup_img=makeup_img,

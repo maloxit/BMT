@@ -17,6 +17,9 @@ class MakeupOptions:
         # data loader related
         self.parser.add_argument('--phase', type=str, default='train', help='phase for dataloading')
         self.parser.add_argument("--warp-path", type=str, default='result', help="path to warp results")
+        self.parser.add_argument("--warp-alt-path", type=str, default='result_alt')
+        self.parser.add_argument("--warp-storage", type=str, default='result_storage')
+
         self.parser.add_argument("--non-makeup-dir", type=str, default="assets/images/non-makeup")
         self.parser.add_argument("--non-makeup-mask-dir", type=str, default="assets/seg/non-makeup")
         self.parser.add_argument("--non-makeup-lms-dir", type=str, default="assets/lms/non-makeup")
