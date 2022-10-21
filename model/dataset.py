@@ -30,8 +30,14 @@ class MakeupDataset(data.Dataset):
         self.makeup_dir = opts.makeup_dir
         self.makeup_mask_dir = opts.makeup_mask_dir
         self.warp_path = opts.warp_path
+        if not os.path.exists(self.warp_path):
+            os.makedirs(self.warp_path)
         self.warp_alt_path = opts.warp_alt_path
+        if not os.path.exists(self.warp_alt_path):
+            os.makedirs(self.warp_alt_path)
         self.warp_storage = opts.warp_storage
+        if not os.path.exists(self.warp_storage):
+            os.makedirs(self.warp_storage)
 
         self.generator = GeneratorManager(opts, device)
 
@@ -104,7 +110,7 @@ class MakeupDataset(data.Dataset):
             makeup_name = os.path.splitext(self.name_makeup[makeup_index])[0]
             removal_name = makeup_name + '_' + non_makeup_name + '.png'
             transfer_name = non_makeup_name + '_' + makeup_name + '.png'
-            modes = ['None', 'transfer', 'removal', 'both']
+            modes = [None, 'transfer', 'removal', 'both']
             mode = 0
             transfer_path = os.path.join(self.warp_alt_path, transfer_name)
             if not os.path.exists(transfer_path):
@@ -117,7 +123,8 @@ class MakeupDataset(data.Dataset):
                 if not os.path.exists(removal_path):
                     mode += 2
             mode = modes[mode]
-            self.generator.generate(self.name_non_makeup[non_makeup_index], self.name_makeup[makeup_index], mode=mode)
+            if mode is not None:
+                self.generator.generate(self.name_non_makeup[non_makeup_index], self.name_makeup[makeup_index], mode=mode)
             transfer_img = self.load_img(transfer_path, non_makeup_angle)
             removal_img = self.load_img(removal_path, makeup_angle)
 
