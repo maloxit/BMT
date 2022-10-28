@@ -108,7 +108,7 @@ class PGTGeneratorDataset(Dataset):
 
         removal_name = make_up_name_base + '_' + non_make_up_name_base + '.png'
         transfer_name = non_make_up_name_base + '_' + make_up_name_base + '.png'
-        modes = [None, 'transfer', 'removal', 'both']
+        modes = ['None', 'transfer', 'removal', 'both']
         mode = 0
         transfer_path = os.path.join(self.warp_alt_path, transfer_name)
         if not os.path.exists(transfer_path):
