@@ -121,7 +121,8 @@ class PGTGeneratorDataset(Dataset):
             if not os.path.exists(removal_path):
                 mode += 2
         mode = modes[mode]
-
+        if mode == 'None':
+            return {'index': index}
         non_makeup = self.load_from_file(non_make_up_name, self.non_makeup_dir, self.non_makeup_mask_dir, self.non_makeup_lms_dir)
         makeup = self.load_from_file(make_up_name, self.makeup_dir, self.makeup_mask_dir, self.makeup_lms_dir)
         data = {
