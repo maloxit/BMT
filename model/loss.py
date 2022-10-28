@@ -179,9 +179,13 @@ class SAATGLoss(nn.Module):
         self.false = torch.BoolTensor([False])
         self.true = torch.BoolTensor([True])
 
-    def forward(self, non_makeup, makeup, transfer, removal, non_makeup_parse, makeup_parse):
-        z_transfer, z_removal, z_rec_non_makeup, z_rec_makeup, z_cycle_non_makeup, z_cycle_makeup, mapX, mapY =\
-            self.gen(non_makeup, makeup, transfer, removal, non_makeup_parse, makeup_parse)
+    def forward(self, non_makeup, makeup, transfer, removal, non_makeup_parse, makeup_parse, generator_output: tuple = None):
+        if generator_output is None:
+            z_transfer, z_removal, z_rec_non_makeup, z_rec_makeup, z_cycle_non_makeup, z_cycle_makeup, mapX, mapY =\
+                self.gen(non_makeup, makeup, transfer, removal, non_makeup_parse, makeup_parse)
+        else:
+            z_transfer, z_removal, z_rec_non_makeup, z_rec_makeup, z_cycle_non_makeup, z_cycle_makeup, mapX, mapY = \
+                generator_output
 
         # Ladv for generator
         loss_G_GAN_non_makeup = self.adv_loss(self.dis_non_makeup(z_removal), self.true)
