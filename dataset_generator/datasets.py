@@ -70,6 +70,8 @@ def generate_metadata(args, config, device):
 
 class PGTGeneratorDataset(Dataset):
     def __init__(self, args, config, device):
+        self.warp_path = args.warp_path
+        self.warp_alt_path = args.warp_alt_path
         self.non_makeup_dir = args.non_makeup_dir
         self.non_makeup_mask_dir = args.non_makeup_mask_dir
         self.non_makeup_lms_dir = args.non_makeup_lms_dir
@@ -95,11 +97,31 @@ class PGTGeneratorDataset(Dataset):
 
     def __getitem__(self, index):
         if index < self.skip_to_index:
-            return {}
+            return {'index': index}
         non_make_up_index = index // len(self.m_img_names)
         make_up_index = index % len(self.m_img_names)
         non_make_up_name = self.n_img_names[non_make_up_index]
         make_up_name = self.m_img_names[make_up_index]
+
+        non_make_up_name_base = os.path.splitext(non_make_up_name)[0]
+        make_up_name_base = os.path.splitext(make_up_name)[0]
+
+        removal_name = make_up_name_base + '_' + non_make_up_name_base + '.png'
+        transfer_name = non_make_up_name_base + '_' + make_up_name_base + '.png'
+        modes = [None, 'transfer', 'removal', 'both']
+        mode = 0
+        transfer_path = os.path.join(self.warp_alt_path, transfer_name)
+        if not os.path.exists(transfer_path):
+            transfer_path = os.path.join(self.warp_path, transfer_name)
+            if not os.path.exists(transfer_path):
+                mode += 1
+        removal_path = os.path.join(self.warp_alt_path, removal_name)
+        if not os.path.exists(removal_path):
+            removal_path = os.path.join(self.warp_path, removal_name)
+            if not os.path.exists(removal_path):
+                mode += 2
+        mode = modes[mode]
+
         non_makeup = self.load_from_file(non_make_up_name, self.non_makeup_dir, self.non_makeup_mask_dir, self.non_makeup_lms_dir)
         makeup = self.load_from_file(make_up_name, self.makeup_dir, self.makeup_mask_dir, self.makeup_lms_dir)
         data = {
@@ -107,7 +129,8 @@ class PGTGeneratorDataset(Dataset):
             'non_make_up_name': non_make_up_name,
             'non_makeup': non_makeup,
             'make_up_name': make_up_name,
-            'makeup': makeup
+            'makeup': makeup,
+            'generate_mode': mode
         }
         return data
 
@@ -119,10 +142,15 @@ class GeneratorManager:
     def __init__(self, args, device):
         self.config = get_config()
         self.warp_path = args.warp_path
+        self.warp_alt_path = args.warp_alt_path
         self.warp_storage = args.warp_storage
         self.storage_every = args.storage_every
         if not os.path.exists(args.warp_path):
             os.makedirs(args.warp_path)
+        if not os.path.exists(args.warp_alt_path):
+            os.makedirs(args.warp_alt_path)
+        if not os.path.exists(args.warp_storage):
+            os.makedirs(args.warp_storage)
 
         self.generator = PGT_generator(device)
         self.dataset = PGTGeneratorDataset(args, self.config, device=device)
@@ -132,6 +160,7 @@ class GeneratorManager:
         for warp_name in warp_names:
             if warp_name.startswith('.ipynb'):
                 continue
+            shutil.copy(os.path.join(self.warp_path, warp_name), os.path.join(self.warp_alt_path, warp_name))
             shutil.move(os.path.join(self.warp_path, warp_name), os.path.join(self.warp_storage, warp_name))
 
     def generate_dataset(self):
@@ -139,25 +168,28 @@ class GeneratorManager:
                                 batch_size=1,
                                 num_workers=1)
         for data in tqdm(dataloader):
-            if len(data) == 0:
-                continue
             if data['index'][0] % self.storage_every == 0:
                 self.move_to_storage()
+            if len(data) == 1:
+                continue
             non_make_up_name = data['non_make_up_name'][0]
             non_makeup = data['non_makeup']
             make_up_name = data['make_up_name'][0]
             makeup = data['makeup']
+            generate_mode = data['generate_mode'][0]
             non_makeup = self.generator.prepare_input(*non_makeup)
             makeup = self.generator.prepare_input(*makeup)
-            transfer = self.generator.transfer(non_makeup, makeup)
-            removal = self.generator.transfer(makeup, non_makeup)
 
             non_make_up_name_base = os.path.splitext(non_make_up_name)[0]
             make_up_name_base = os.path.splitext(make_up_name)[0]
-            transfer_save_path = os.path.join(self.warp_path, f"{non_make_up_name_base}_{make_up_name_base}.png")
-            save_image(transfer, transfer_save_path)
-            removal_save_path = os.path.join(self.warp_path, f"{make_up_name_base}_{non_make_up_name_base}.png")
-            save_image(removal, removal_save_path)
+            if generate_mode in ('both', 'transfer'):
+                transfer = self.generator.transfer(non_makeup, makeup)
+                transfer_save_path = os.path.join(self.warp_path, f"{non_make_up_name_base}_{make_up_name_base}.png")
+                save_image(transfer, transfer_save_path)
+            if generate_mode in ('both', 'removal'):
+                removal = self.generator.transfer(makeup, non_makeup)
+                removal_save_path = os.path.join(self.warp_path, f"{make_up_name_base}_{non_make_up_name_base}.png")
+                save_image(removal, removal_save_path)
 
     def generate(self, non_make_up_name, make_up_name, mode='both'):
         non_makeup = self.dataset.load_from_file(
@@ -190,6 +222,7 @@ def run():
     parser = argparse.ArgumentParser("argument for training")
     parser.add_argument("--name", type=str, default='demo')
     parser.add_argument("--warp-path", type=str, default='result', help="path to warp results")
+    parser.add_argument("--warp-alt-path", type=str, default='result', help="path to warp results")
     parser.add_argument("--warp-storage", type=str, default='result_storage')
     parser.add_argument("--storage-every", type=int, default=600)
     parser.add_argument("--skip-to-index", type=int, default=-1)
