@@ -1,14 +1,11 @@
 import os
 import cv2
 import shutil
-import copy
 import random
 import numpy as np
 from PIL import Image
 import torch.utils.data as data
-import sys
 
-sys.path.append('.')
 from dataset_generator.datasets import GeneratorManager
 
 
@@ -137,14 +134,10 @@ class MakeupDataset(data.Dataset):
             removal_img = self.load_img(removal_path, makeup_angle)
 
         # preprocessing
-        preprocessed_data = self.preprocessing(opts=self.opt, non_makeup_img=non_makeup_img, makeup_img=makeup_img,
-                                              transfer_img=transfer_img, removal_img=removal_img,
-                                              non_makeup_parse=non_makeup_parse, makeup_parse=makeup_parse)
-
-        non_makeup_img = preprocessed_data['non_makeup']
-        makeup_img = preprocessed_data['makeup']
-        non_makeup_parse = preprocessed_data['non_makeup_parse']
-        makeup_parse = preprocessed_data['makeup_parse']
+        non_makeup_img, makeup_img, non_makeup_parse, makeup_parse, transfer_img, removal_img = self.preprocessing(
+            opts=self.opt, non_makeup_img=non_makeup_img, makeup_img=makeup_img,
+            non_makeup_parse=non_makeup_parse, makeup_parse=makeup_parse, transfer_img=transfer_img,
+            removal_img=removal_img)
 
         non_makeup_img = np.transpose(non_makeup_img, (2, 0, 1)).astype(np.float32)
         makeup_img = np.transpose(makeup_img, (2, 0, 1)).astype(np.float32)
@@ -159,8 +152,8 @@ class MakeupDataset(data.Dataset):
         }
 
         if self.need_pgt:
-            transfer_img = np.transpose(preprocessed_data['transfer'], (2, 0, 1)).astype(np.float32)
-            removal_img = np.transpose(preprocessed_data['removal'], (2, 0, 1)).astype(np.float32)
+            transfer_img = np.transpose(transfer_img, (2, 0, 1)).astype(np.float32)
+            removal_img = np.transpose(removal_img, (2, 0, 1)).astype(np.float32)
             data['transfer'] = transfer_img
             data['removal'] = removal_img
 
@@ -171,30 +164,28 @@ class MakeupDataset(data.Dataset):
 
     def preprocessing(self, opts, non_makeup_img, makeup_img, non_makeup_parse, makeup_parse,
                       transfer_img=None, removal_img=None):
-        non_makeup_img = cv2.resize(non_makeup_img, (opts.resize_size, opts.resize_size))
-        makeup_img = cv2.resize(makeup_img, (opts.resize_size, opts.resize_size))
-        if self.need_pgt:
-            transfer_img = cv2.resize(transfer_img, (opts.resize_size, opts.resize_size))
-            removal_img = cv2.resize(removal_img, (opts.resize_size, opts.resize_size))
-
-        non_makeup_parse = cv2.resize(non_makeup_parse, (opts.resize_size, opts.resize_size),
-                                      interpolation=cv2.INTER_NEAREST)
-        makeup_parse = cv2.resize(makeup_parse, (opts.resize_size, opts.resize_size),
-                                  interpolation=cv2.INTER_NEAREST)
         if self.transform:
             if np.random.random() > 0.5:
+                non_makeup_img = cv2.resize(non_makeup_img, (opts.resize_size, opts.resize_size))
+                non_makeup_parse = cv2.resize(non_makeup_parse, (opts.resize_size, opts.resize_size),
+                                              interpolation=cv2.INTER_NEAREST)
                 h1 = int(np.ceil(np.random.uniform(1e-2, opts.resize_size - opts.crop_size)))
                 w1 = int(np.ceil(np.random.uniform(1e-2, opts.resize_size - opts.crop_size)))
                 non_makeup_img = non_makeup_img[h1:h1 + opts.crop_size, w1:w1 + opts.crop_size]
                 non_makeup_parse = non_makeup_parse[h1:h1 + opts.crop_size, w1:w1 + opts.crop_size]
                 if self.need_pgt:
+                    transfer_img = cv2.resize(transfer_img, (opts.resize_size, opts.resize_size))
                     transfer_img = transfer_img[h1:h1 + opts.crop_size, w1:w1 + opts.crop_size]
             if np.random.random() > 0.5:
+                makeup_img = cv2.resize(makeup_img, (opts.resize_size, opts.resize_size))
+                makeup_parse = cv2.resize(makeup_parse, (opts.resize_size, opts.resize_size),
+                                          interpolation=cv2.INTER_NEAREST)
                 h1 = int(np.ceil(np.random.uniform(1e-2, opts.resize_size - opts.crop_size)))
                 w1 = int(np.ceil(np.random.uniform(1e-2, opts.resize_size - opts.crop_size)))
                 makeup_img = makeup_img[h1:h1 + opts.crop_size, w1:w1 + opts.crop_size]
                 makeup_parse = makeup_parse[h1:h1 + opts.crop_size, w1:w1 + opts.crop_size]
                 if self.need_pgt:
+                    removal_img = cv2.resize(removal_img, (opts.resize_size, opts.resize_size))
                     removal_img = removal_img[h1:h1 + opts.crop_size, w1:w1 + opts.crop_size]
 
             if opts.flip:
@@ -223,4 +214,4 @@ class MakeupDataset(data.Dataset):
             removal_img = removal_img / 127.5 - 1.
         data = {'non_makeup': non_makeup_img, 'makeup': makeup_img, 'transfer': transfer_img, 'removal': removal_img,
                 'non_makeup_parse': non_makeup_parse, 'makeup_parse': makeup_parse}
-        return data
+        return non_makeup_img, makeup_img, non_makeup_parse, makeup_parse, transfer_img, removal_img
