@@ -46,7 +46,7 @@ class SSAT_G(nn.Module):
         # generator
         self.gen = networks.Decoder(opts.output_dim)
 
-    def output_fake_images(self, non_makeup, makeup, non_makeup_parse, makeup_parse):
+    def get_transfers(self, non_makeup, makeup, non_makeup_parse, makeup_parse):
         z_non_makeup_c = self.enc_content(non_makeup)
         z_non_makeup_s = self.enc_semantic(non_makeup_parse)
         z_non_makeup_a = self.enc_makeup(non_makeup)
@@ -67,47 +67,7 @@ class SSAT_G(nn.Module):
         z_removal = self.gen(z_makeup_c, z_non_makeup_a_warp)
         return z_transfer, z_removal
 
-    def forward(self, non_makeup, makeup, transfer, removal, non_makeup_parse, makeup_parse):
-        # first transfer and removal
-        z_non_makeup_c = self.enc_content(non_makeup)
-        z_non_makeup_s = self.enc_semantic(non_makeup_parse)
-        z_non_makeup_a = self.enc_makeup(non_makeup)
-
-        z_makeup_c = self.enc_content(makeup)
-        z_makeup_s = self.enc_semantic(makeup_parse)
-        z_makeup_a = self.enc_makeup(makeup)
-
-        # warp makeup style
-        mapX, mapY, z_non_makeup_a_warp, z_makeup_a_warp = self.transformer(z_non_makeup_c,
-                                                                                      z_makeup_c,
-                                                                                      z_non_makeup_s,
-                                                                                      z_makeup_s,
-                                                                                      z_non_makeup_a,
-                                                                                      z_makeup_a)
-        # makeup transfer and removal
-        z_transfer = self.gen(z_non_makeup_c, z_makeup_a_warp)
-        z_removal = self.gen(z_makeup_c, z_non_makeup_a_warp)
-
-        # rec
-        z_rec_non_makeup = self.gen(z_non_makeup_c, z_non_makeup_a)
-        z_rec_makeup = self.gen(z_makeup_c, z_makeup_a)
-
-        # second transfer and removal
-        z_transfer_c = self.enc_content(z_transfer)
-        z_transfer_a = self.enc_makeup(z_transfer)
-
-        z_removal_c = self.enc_content(z_removal)
-        z_removal_a = self.enc_makeup(z_removal)
-        # warp makeup style
-        mapX2, mapY2, z_transfer_a_warp, z_removal_a_warp = self.transformer(z_transfer_c, z_removal_c, z_non_makeup_s,
-                                                                             z_makeup_s, z_transfer_a, z_removal_a)
-
-        # makeup transfer and removal
-        z_cycle_non_makeup = self.gen(z_transfer_c, z_removal_a_warp)
-        z_cycle_makeup = self.gen(z_removal_c, z_transfer_a_warp)
-        return z_transfer, z_removal, z_rec_non_makeup, z_rec_makeup, z_cycle_non_makeup, z_cycle_makeup, mapX, mapY
-
-    def output(self, non_makeup, makeup, non_makeup_parse, makeup_parse):
+    def forward(self, non_makeup, makeup, non_makeup_parse, makeup_parse):
         # first transfer and removal
         z_non_makeup_c = self.enc_content(non_makeup)
         z_non_makeup_s = self.enc_semantic(non_makeup_parse)

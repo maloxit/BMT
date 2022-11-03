@@ -15,7 +15,6 @@ class MakeupOptions:
         self.opt = None
         self.parser = argparse.ArgumentParser()
         # data loader related
-        self.parser.add_argument('--phase', type=str, default='train', help='phase for dataloading')
         self.parser.add_argument("--warp-path", type=str, default='result', help="path to warp results")
         self.parser.add_argument("--warp-alt-path", type=str, default='result_alt')
         self.parser.add_argument("--warp-storage", type=str, default='result_storage')

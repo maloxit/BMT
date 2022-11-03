@@ -182,7 +182,7 @@ class SAATGLoss(nn.Module):
     def forward(self, non_makeup, makeup, transfer, removal, non_makeup_parse, makeup_parse, generator_output: tuple = None):
         if generator_output is None:
             z_transfer, z_removal, z_rec_non_makeup, z_rec_makeup, z_cycle_non_makeup, z_cycle_makeup, mapX, mapY =\
-                self.gen(non_makeup, makeup, transfer, removal, non_makeup_parse, makeup_parse)
+                self.gen(non_makeup, makeup, non_makeup_parse, makeup_parse)
         else:
             z_transfer, z_removal, z_rec_non_makeup, z_rec_makeup, z_cycle_non_makeup, z_cycle_makeup, mapX, mapY = \
                 generator_output
