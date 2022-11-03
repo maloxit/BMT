@@ -80,7 +80,10 @@ class PGTGeneratorDataset(Dataset):
         self.makeup_lms_dir = args.makeup_lms_dir
         self.n_img_names = sorted(os.listdir(args.non_makeup_dir))
         self.m_img_names = sorted(os.listdir(args.makeup_dir))
-        self.skip_to_index = args.skip_to_index
+        if 'skip_to_index' in vars(args).keys():
+            self.skip_to_index = args.skip_to_index
+        else:
+            self.skip_to_index = -1
         if self.n_img_names[0].startswith('.ipynb'):
             self.n_img_names.pop(0)
         if self.m_img_names[0].startswith('.ipynb'):
@@ -148,7 +151,7 @@ class GeneratorManager:
         if 'storage_every' in vars(args).keys():
             self.storage_every = args.storage_every
         else:
-            self.storage_every = 0
+            self.storage_every = 1000
         if not os.path.exists(args.warp_path):
             os.makedirs(args.warp_path)
         if not os.path.exists(args.warp_alt_path):
