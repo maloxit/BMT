@@ -145,7 +145,10 @@ class GeneratorManager:
         self.warp_path = args.warp_path
         self.warp_alt_path = args.warp_alt_path
         self.warp_storage = args.warp_storage
-        self.storage_every = args.storage_every
+        if 'storage_every' in vars(args).keys():
+            self.storage_every = args.storage_every
+        else:
+            self.storage_every = 0
         if not os.path.exists(args.warp_path):
             os.makedirs(args.warp_path)
         if not os.path.exists(args.warp_alt_path):
