@@ -1,5 +1,4 @@
 import os
-import cv2
 from PIL import Image
 import numpy as np
 import torch
@@ -47,6 +46,7 @@ class PreProcess:
 
         self.transform = transforms.Compose([
             transforms.Resize(config.DATA.IMG_SIZE),
+            transforms.CenterCrop(config.DATA.IMG_SIZE),
             transforms.ToTensor(),
             transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])])
 
@@ -129,53 +129,11 @@ class PreProcess:
         lms = np.load(path)
         return torch.IntTensor(lms)
 
-    ############################## Compose Process ##############################
-    def preprocess(self, image: Image, mask: Image = None, is_crop=True):
-        '''
-        return: image: Image, (H, W), mask: tensor, (1, H, W)
-        '''
-        face = futils.dlib.detect(image)
-
-        face_on_image = face[0]
-        face = face[0]
-        crop_face = None
-        # image: Image, cropped face
-        # face: the same as above
-        # crop face: rectangle, face region in cropped face
-        np_image = np.array(image)  # (h', w', 3)
-
-        if mask is None:
-            mask = self.face_parse.parse(cv2.resize(np_image, (512, 512))).cpu()
-            # obtain face parsing result
-            # mask: Tensor, (512, 512)
-            mask = F.interpolate(
-                mask.view(1, 1, 512, 512),
-                (self.img_size, self.img_size),
-                mode="nearest").squeeze(0).long()  # (1, H, W)
-
-        lms = futils.dlib.landmarks(image, face) * self.img_size / image.width  # scale to fit self.img_size
-        # lms: narray, the position of 68 key points, (68 ,2)
-        lms = torch.IntTensor(lms.round()).clamp_max_(self.img_size - 1)
-        # distinguish upper and lower lips 
-        lms[61:64, 0] -= 1;
-        lms[65:68, 0] += 1
-        for i in range(3):
-            if torch.sum(torch.abs(lms[61 + i] - lms[67 - i])) == 0:
-                lms[61 + i, 0] -= 1
-                lms[67 - i, 0] += 1
-
-        image = image.resize((self.img_size, self.img_size), Image.ANTIALIAS)
-        return [image, mask, lms], face_on_image, crop_face
-
     def process(self, image: Image, mask: torch.Tensor, lms: torch.Tensor):
         image = self.transform(image)
         mask = self.mask_process(mask)
         diff = self.diff_process(lms)
         return [image, mask, diff, lms]
-
-    def __call__(self, image: Image, is_crop=True):
-        source, face_on_image, crop_face = self.preprocess(image, is_crop)
-        return self.process(*source), face_on_image, crop_face
 
 
 if __name__ == "__main__":

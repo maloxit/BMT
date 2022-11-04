@@ -1,12 +1,11 @@
 import os
 import shutil
 from PIL import Image
-import numpy as np
-import cv2
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from torchvision.utils import save_image
+from torchvision import transforms
 import argparse
 from tqdm import tqdm
 
@@ -35,36 +34,32 @@ def generate_metadata(args, config, device):
 
     for img_name in tqdm(n_img_names):
         raw_image = Image.open(os.path.join(args.non_makeup_dir, img_name)).convert('RGB')
-
-        np_image = np.array(raw_image)
-        mask = preprocessor.face_parse.parse(cv2.resize(np_image, (512, 512)))
+        base_name = os.path.splitext(img_name)[0]
+        mask = preprocessor.face_parse.parse(raw_image)
         # obtain face parsing result
         # mask: Tensor, (512, 512)
         mask = F.interpolate(
             mask.view(1, 1, 512, 512),
             (preprocessor.img_size, preprocessor.img_size),
             mode="nearest").squeeze(0).long()  # (1, H, W)
-        preprocessor.save_mask(mask, os.path.join(args.non_makeup_mask_dir, img_name))
+        preprocessor.save_mask(mask, os.path.join(args.non_makeup_mask_dir, f'{base_name}.png'))
 
         lms = preprocessor.lms_process(raw_image)
-        base_name = os.path.splitext(img_name)[0]
         preprocessor.save_lms(lms, os.path.join(args.non_makeup_lms_dir, f'{base_name}.npy'))
 
     for img_name in tqdm(m_img_names):
         raw_image = Image.open(os.path.join(args.makeup_dir, img_name)).convert('RGB')
-
-        np_image = np.array(raw_image)
-        mask = preprocessor.face_parse.parse(cv2.resize(np_image, (512, 512)))
+        base_name = os.path.splitext(img_name)[0]
+        mask = preprocessor.face_parse.parse(raw_image)
         # obtain face parsing result
         # mask: Tensor, (512, 512)
         mask = F.interpolate(
             mask.view(1, 1, 512, 512),
             (preprocessor.img_size, preprocessor.img_size),
             mode="nearest").squeeze(0).long()  # (1, H, W)
-        preprocessor.save_mask(mask, os.path.join(args.makeup_mask_dir, img_name))
+        preprocessor.save_mask(mask, os.path.join(args.makeup_mask_dir, f'{base_name}.png'))
 
         lms = preprocessor.lms_process(raw_image)
-        base_name = os.path.splitext(img_name)[0]
         preprocessor.save_lms(lms, os.path.join(args.makeup_lms_dir, f'{base_name}.npy'))
 
 
@@ -93,7 +88,8 @@ class PGTGeneratorDataset(Dataset):
 
     def load_from_file(self, img_name, img_dir, mask_dir, lms_dir):
         image = Image.open(os.path.join(img_dir, img_name)).convert('RGB')
-        mask = self.preprocessor.load_mask(os.path.join(mask_dir, img_name))
+        base_name = os.path.splitext(img_name)[0]
+        mask = self.preprocessor.load_mask(os.path.join(mask_dir, f'{base_name}.png'))
         base_name = os.path.splitext(img_name)[0]
         lms = self.preprocessor.load_lms(os.path.join(lms_dir, f'{base_name}.npy'))
         return self.preprocessor.process(image, mask, lms)

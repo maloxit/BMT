@@ -95,23 +95,23 @@ class MakeupDataset(data.Dataset):
         else:
             non_makeup_index = index
             makeup_index = random.randint(0, self.makeup_size - 1)
+        
 
-        # load non-makeup
         non_makeup_img = self.load_img(os.path.join(self.non_makeup_dir, self.name_non_makeup[non_makeup_index]),
                                        non_makeup_angle)
-        non_makeup_parse = self.load_parse(
-            os.path.join(self.non_makeup_mask_dir, self.name_non_makeup[non_makeup_index]), non_makeup_angle)
-
-        # load makeup
         makeup_img = self.load_img(os.path.join(self.makeup_dir, self.name_makeup[makeup_index]), makeup_angle)
-        makeup_parse = self.load_parse(os.path.join(self.makeup_mask_dir, self.name_makeup[makeup_index]), makeup_angle)
+        
+        non_makeup_name = os.path.splitext(self.name_non_makeup[non_makeup_index])[0]
+        makeup_name = os.path.splitext(self.name_makeup[makeup_index])[0]
+
+        non_makeup_parse = self.load_parse(
+            os.path.join(self.non_makeup_mask_dir, f'{non_makeup_name}.npy'), non_makeup_angle)
+        makeup_parse = self.load_parse(os.path.join(self.makeup_mask_dir, f'{makeup_name}.npy'), makeup_angle)
 
         # load groundtrue
         transfer_img = None
         removal_img = None
         if self.need_pgt:
-            non_makeup_name = os.path.splitext(self.name_non_makeup[non_makeup_index])[0]
-            makeup_name = os.path.splitext(self.name_makeup[makeup_index])[0]
             removal_name = makeup_name + '_' + non_makeup_name + '.png'
             transfer_name = non_makeup_name + '_' + makeup_name + '.png'
             modes = [None, 'transfer', 'removal', 'both']
