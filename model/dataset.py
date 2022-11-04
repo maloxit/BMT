@@ -18,7 +18,6 @@ class MakeupDataset(data.Dataset):
         self.need_pgt = need_pgt
         self.all_comb = all_comb
         self.opt = opts
-        self.phase = opts.phase
         self.semantic_dim = opts.semantic_dim
         self.non_makeup_dir = opts.non_makeup_dir
         self.non_makeup_mask_dir = opts.non_makeup_mask_dir
@@ -105,8 +104,8 @@ class MakeupDataset(data.Dataset):
         makeup_name = os.path.splitext(self.name_makeup[makeup_index])[0]
 
         non_makeup_parse = self.load_parse(
-            os.path.join(self.non_makeup_mask_dir, f'{non_makeup_name}.npy'), non_makeup_angle)
-        makeup_parse = self.load_parse(os.path.join(self.makeup_mask_dir, f'{makeup_name}.npy'), makeup_angle)
+            os.path.join(self.non_makeup_mask_dir, f'{non_makeup_name}.png'), non_makeup_angle)
+        makeup_parse = self.load_parse(os.path.join(self.makeup_mask_dir, f'{makeup_name}.png'), makeup_angle)
 
         # load groundtrue
         transfer_img = None

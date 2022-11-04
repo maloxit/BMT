@@ -1,12 +1,9 @@
 import argparse
 
 
-def get_opts(parse=True):
+def get_opts():
     parser = MakeupOptions()
-    if parse:
-        opts = parser.parse()
-    else:
-        opts = parser.parser.parse_known_args([])
+    opts = parser.parse()
     return opts
 
 
@@ -33,7 +30,7 @@ class MakeupOptions:
         self.parser.add_argument('--resize_size', type=int, default=286, help='resized image size for training')
         self.parser.add_argument('--crop_size', type=int, default=256, help='cropped image size for training')
         self.parser.add_argument('--flip', type=bool, default=True, help='specified if  flipping')
-        self.parser.add_argument('--nThreads', type=int, default=1, help='# of threads for data loader')
+        self.parser.add_argument('--nThreads', type=int, default=0, help='# of threads for data loader')
 
         # platform related
         self.parser.add_argument('--platform', type=str, default='GPU', help='only support GPU and CPU')
@@ -72,8 +69,8 @@ class MakeupOptions:
                                  help='use spectral normalization in discriminator')
         self.parser.add_argument('--lr_policy', type=str, default='lambda', help='type of learn rate decay')
 
-        self.parser.add_argument('--max_epoch', type=int, default=2, help='epoch size for training, default is 200.')
-        self.parser.add_argument('--n_epochs', type=int, default=1,
+        self.parser.add_argument('--max_epoch', type=int, default=1000, help='epoch size for training, default is 200.')
+        self.parser.add_argument('--n_epochs', type=int, default=1000,
                                  help='number of epochs with the initial learning rate, default is 100')
         self.parser.add_argument('--n_epochs_decay', type=int, default=500,
                                  help='n_epochs_decay')
@@ -84,5 +81,5 @@ class MakeupOptions:
         self.parser.add_argument('--lr', type=float, default=0.0002, help='lr')
 
     def parse(self):
-        self.opt = self.parser.parse_known_args()
+        self.opt = self.parser.parse_args()
         return self.opt
