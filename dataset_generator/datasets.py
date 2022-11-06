@@ -1,6 +1,6 @@
 import os
 import shutil
-from PIL import Image
+from PIL import Image, ImageDraw
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
@@ -13,6 +13,37 @@ from dataset_generator.generator import PGT_generator
 from dataset_generator.config import get_config
 from dataset_generator.training.preprocess import PreProcess
 
+
+def fix_mask_eyes(mask, lms):
+    eye_region = (mask == 4).float() + (mask == 5).float()
+    mask = mask * (1 - eye_region) + 100 * eye_region
+    mask_img = transforms.ToPILImage()(mask.squeeze(0).type(torch.ByteTensor))
+    draw = ImageDraw.Draw(mask_img)
+    points1 = [(lms[i, 1], lms[i, 0]) for i in range(36, 42)]
+    points2 = [(lms[i, 1], lms[i, 0]) for i in range(42, 48)]
+    color1 = 5
+    color2 = 4
+    for fill_color, points in zip((color1, color2), (points1, points2)):
+        x_sum = 0
+        y_sum = 0
+        c = 0
+        for i in range(len(points)):
+            x, y = points[i]
+            x_sum += x
+            y_sum += y
+            x_mean = x_sum // (i + 1)
+            y_mean = y_sum // (i + 1)
+            color = mask_img.getpixel((x, y))
+            if color == 100:
+                ImageDraw.floodfill(mask_img, (x, y), fill_color, thresh=0)
+                c += 1
+            color = mask_img.getpixel((x_mean, y_mean))
+            if color == 100:
+                ImageDraw.floodfill(mask_img, (x_mean, y_mean), fill_color, thresh=0)
+                c += 1
+        if c == 0:
+            draw.polygon(points, fill=fill_color)
+    return mask_img
 
 def generate_metadata(args, config, device):
     preprocessor = PreProcess(config, device=device)
@@ -42,9 +73,18 @@ def generate_metadata(args, config, device):
             mask.view(1, 1, 512, 512),
             (preprocessor.img_size, preprocessor.img_size),
             mode="nearest").squeeze(0).long()  # (1, H, W)
-        preprocessor.save_mask(mask, os.path.join(args.non_makeup_mask_dir, f'{base_name}.png'))
-
-        lms = preprocessor.lms_process(raw_image)
+        h, w = raw_image.size
+        x_low, y_low, x_high, y_high = (0,0,h,w)
+        if h < w:
+            y_low = (w - h) // 2
+            y_high = w - (w - h + 1) // 2
+        else:
+            x_low = (h - w) // 2
+            x_high = h - (h - w + 1) // 2
+        square_image = raw_image.crop((x_low, y_low, x_high, y_high))
+        lms = preprocessor.lms_process(square_image)
+        mask = fix_mask_eyes(mask, lms)
+        mask.save(os.path.join(args.non_makeup_mask_dir, f'{base_name}.png'))
         preprocessor.save_lms(lms, os.path.join(args.non_makeup_lms_dir, f'{base_name}.npy'))
 
     for img_name in tqdm(m_img_names):
@@ -57,9 +97,18 @@ def generate_metadata(args, config, device):
             mask.view(1, 1, 512, 512),
             (preprocessor.img_size, preprocessor.img_size),
             mode="nearest").squeeze(0).long()  # (1, H, W)
-        preprocessor.save_mask(mask, os.path.join(args.makeup_mask_dir, f'{base_name}.png'))
-
-        lms = preprocessor.lms_process(raw_image)
+        h, w = raw_image.size
+        x_low, y_low, x_high, y_high = (0,0,h,w)
+        if h < w:
+            y_low = (w - h) // 2
+            y_high = w - (w - h + 1) // 2
+        else:
+            x_low = (h - w) // 2
+            x_high = h - (h - w + 1) // 2
+        square_image = raw_image.crop((x_low, y_low, x_high, y_high))
+        lms = preprocessor.lms_process(square_image)
+        mask = fix_mask_eyes(mask, lms)
+        mask.save(os.path.join(args.makeup_mask_dir, f'{base_name}.png'))
         preprocessor.save_lms(lms, os.path.join(args.makeup_lms_dir, f'{base_name}.npy'))
 
 
@@ -224,18 +273,18 @@ class GeneratorManager:
 def run():
     parser = argparse.ArgumentParser("argument for training")
     parser.add_argument("--name", type=str, default='demo')
-    parser.add_argument("--warp-path", type=str, default='result', help="path to warp results")
-    parser.add_argument("--warp-alt-path", type=str, default='result', help="path to warp results")
-    parser.add_argument("--warp-storage", type=str, default='result_storage')
+    parser.add_argument("--warp-path", type=str, default='datasets/train/images/wrap_tmp', help="path to warp results")
+    parser.add_argument("--warp-alt-path", type=str, default='datasets/train/images/wrap', help="path to warp results")
+    parser.add_argument("--warp-storage", type=str, default='datasets/train/images/wrap_storage')
     parser.add_argument("--storage-every", type=int, default=600)
     parser.add_argument("--skip-to-index", type=int, default=-1)
 
-    parser.add_argument("--non-makeup-dir", type=str, default="assets/images/non-makeup")
-    parser.add_argument("--non-makeup-mask-dir", type=str, default="assets/seg/non-makeup")
-    parser.add_argument("--non-makeup-lms-dir", type=str, default="assets/lms/non-makeup")
-    parser.add_argument("--makeup-dir", type=str, default="assets/images/makeup")
-    parser.add_argument("--makeup-mask-dir", type=str, default="assets/seg/makeup")
-    parser.add_argument("--makeup-lms-dir", type=str, default="assets/lms/makeup")
+    parser.add_argument("--non-makeup-dir", type=str, default="datasets/train/images/non-makeup")
+    parser.add_argument("--non-makeup-mask-dir", type=str, default="datasets/train/seg1/non-makeup")
+    parser.add_argument("--non-makeup-lms-dir", type=str, default="datasets/train/lms/non-makeup")
+    parser.add_argument("--makeup-dir", type=str, default="datasets/train/images/makeup")
+    parser.add_argument("--makeup-mask-dir", type=str, default="datasets/train/seg1/makeup")
+    parser.add_argument("--makeup-lms-dir", type=str, default="datasets/train/lms/makeup")
     parser.add_argument("--gpu", default='0', type=str, help="GPU id to use.")
     parser.add_argument("--skip-metadata", action='store_true', help="Do not generate metadata.")
     parser.add_argument("--metadata-only", action='store_true', help="Only generate metadata.")
