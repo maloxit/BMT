@@ -148,8 +148,8 @@ class CPLoss(nn.Module):
 class WeightMaskGenerator(nn.Module):
     def __init__(self):
         super(WeightMaskGenerator, self).__init__()
-        self.big_blur = vT.GaussianBlur(101, 10.)
-        self.small_blur = vT.GaussianBlur(31, 2.)
+        self.big_blur = vT.GaussianBlur(51, 15.)
+        self.small_blur = vT.GaussianBlur(21, 2.)
 
     def batch_max_normalization(self, input):
         tmp = input.view(input.size(0), -1)
@@ -162,16 +162,15 @@ class WeightMaskGenerator(nn.Module):
         return tmp.view(input.shape)
 
     def forward(self, mask_parse, area_weights, eye_shadows_weight):
+        background_mask = mask_parse[:, 0, :, :].unsqueeze(1)
         eyes_mask_l = mask_parse[:, 4, :, :].unsqueeze(1)
         w_mask_l = self.big_blur(eyes_mask_l)
-        w_mask_l = w_mask_l * (1 - eyes_mask_l)
-        w_mask_l = self.small_blur(w_mask_l)
+        w_mask_l = w_mask_l * (1 - eyes_mask_l) * (1 - background_mask)
         w_mask_l = self.batch_max_normalization(w_mask_l)
 
         eyes_mask_r = mask_parse[:, 5, :, :].unsqueeze(1)
         w_mask_r = self.big_blur(eyes_mask_r)
-        w_mask_r = w_mask_r * (1 - eyes_mask_r)
-        w_mask_r = self.small_blur(w_mask_r)
+        w_mask_r = w_mask_r * (1 - eyes_mask_r) * (1 - background_mask)
         w_mask_r = self.batch_max_normalization(w_mask_r)
 
         mask = torch.zeros_like(mask_parse[:, 0:1, :, :])
@@ -179,6 +178,7 @@ class WeightMaskGenerator(nn.Module):
             mask = mask + (mask_parse[:, i, :, :] * area_weights[i]).unsqueeze(1)
         mask = torch.maximum(mask, w_mask_l * eye_shadows_weight)
         mask = torch.maximum(mask, w_mask_r * eye_shadows_weight)
+        mask = self.small_blur(mask)
         mask = self.batch_mean_normalization(mask)
         return mask
 
