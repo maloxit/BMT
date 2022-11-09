@@ -12,16 +12,16 @@ class MakeupOptions:
         self.opt = None
         self.parser = argparse.ArgumentParser()
         # data loader related
-        self.parser.add_argument("--warp-path", type=str, default='result', help="path to warp results")
-        self.parser.add_argument("--warp-alt-path", type=str, default='result_alt')
-        self.parser.add_argument("--warp-storage", type=str, default='result_storage')
+        self.parser.add_argument("--warp-path", type=str, default='datasets/train/images/wrap_tmp', help="path to warp results")
+        self.parser.add_argument("--warp-alt-path", type=str, default='datasets/train/images/wrap', help="path to warp results")
+        self.parser.add_argument("--warp-storage", type=str, default='datasets/train/images/wrap_storage')
 
-        self.parser.add_argument("--non-makeup-dir", type=str, default="assets/images/non-makeup")
-        self.parser.add_argument("--non-makeup-mask-dir", type=str, default="assets/seg/non-makeup")
-        self.parser.add_argument("--non-makeup-lms-dir", type=str, default="assets/lms/non-makeup")
-        self.parser.add_argument("--makeup-dir", type=str, default="assets/images/makeup")
-        self.parser.add_argument("--makeup-mask-dir", type=str, default="assets/seg/makeup")
-        self.parser.add_argument("--makeup-lms-dir", type=str, default="assets/lms/makeup")
+        self.parser.add_argument("--non-makeup-dir", type=str, default="datasets/train/images/non-makeup")
+        self.parser.add_argument("--non-makeup-mask-dir", type=str, default="datasets/train/seg1/non-makeup")
+        self.parser.add_argument("--non-makeup-lms-dir", type=str, default="datasets/train/lms/non-makeup")
+        self.parser.add_argument("--makeup-dir", type=str, default="datasets/train/images/makeup")
+        self.parser.add_argument("--makeup-mask-dir", type=str, default="datasets/train/seg1/makeup")
+        self.parser.add_argument("--makeup-lms-dir", type=str, default="datasets/train/lms/makeup")
 
         self.parser.add_argument('--input_dim', type=int, default=3, help='input_dim')
         self.parser.add_argument('--output_dim', type=int, default=3, help='output_dim')

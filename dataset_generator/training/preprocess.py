@@ -16,20 +16,6 @@ class PreProcess:
         self.img_size = config.DATA.IMG_SIZE
         self.device = device
 
-        xs, ys = np.meshgrid(
-            np.linspace(
-                0, self.img_size - 1,
-                self.img_size
-            ),
-            np.linspace(
-                0, self.img_size - 1,
-                self.img_size
-            )
-        )
-        xs = xs[None].repeat(config.PREPROCESS.LANDMARK_POINTS, axis=0)
-        ys = ys[None].repeat(config.PREPROCESS.LANDMARK_POINTS, axis=0)
-        fix = np.concatenate([ys, xs], axis=0)
-        self.fix = torch.Tensor(fix)  # (136, h, w)
         if need_parser:
             self.face_parse = futils.mask.FaceParser(device=device)
 

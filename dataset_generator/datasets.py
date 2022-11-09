@@ -14,15 +14,16 @@ from dataset_generator.config import get_config
 from dataset_generator.training.preprocess import PreProcess
 
 
-def fix_mask_eyes(mask, lms):
-    eye_region = (mask == 4).float() + (mask == 5).float()
-    mask = mask * (1 - eye_region) + 100 * eye_region
+def fix_mask_eyes(mask, lms, eye_class):
+    eye_region = (mask == eye_class[0]).float() + (mask == eye_class[1]).float()
+    mask = mask * (1 - eye_region) + 255 * eye_region
     mask_img = transforms.ToPILImage()(mask.squeeze(0).type(torch.ByteTensor))
     draw = ImageDraw.Draw(mask_img)
-    points1 = [(lms[i, 1], lms[i, 0]) for i in range(36, 42)]
-    points2 = [(lms[i, 1], lms[i, 0]) for i in range(42, 48)]
-    color1 = 5
-    color2 = 4
+    lms = lms.numpy()
+    points1 = [(lms[i, 1], lms[i, 0]) for i in range(42, 48)]
+    points2 = [(lms[i, 1], lms[i, 0]) for i in range(36, 42)]
+    color1 = eye_class[0]
+    color2 = eye_class[1]
     for fill_color, points in zip((color1, color2), (points1, points2)):
         x_sum = 0
         y_sum = 0
@@ -34,11 +35,11 @@ def fix_mask_eyes(mask, lms):
             x_mean = x_sum // (i + 1)
             y_mean = y_sum // (i + 1)
             color = mask_img.getpixel((x, y))
-            if color == 100:
+            if color == 255:
                 ImageDraw.floodfill(mask_img, (x, y), fill_color, thresh=0)
                 c += 1
             color = mask_img.getpixel((x_mean, y_mean))
-            if color == 100:
+            if color == 255:
                 ImageDraw.floodfill(mask_img, (x_mean, y_mean), fill_color, thresh=0)
                 c += 1
         if c == 0:
@@ -83,7 +84,7 @@ def generate_metadata(args, config, device):
             x_high = h - (h - w + 1) // 2
         square_image = raw_image.crop((x_low, y_low, x_high, y_high))
         lms = preprocessor.lms_process(square_image)
-        mask = fix_mask_eyes(mask, lms)
+        mask = fix_mask_eyes(mask, lms, config.PREPROCESS.EYE_CLASS)
         mask.save(os.path.join(args.non_makeup_mask_dir, f'{base_name}.png'))
         preprocessor.save_lms(lms, os.path.join(args.non_makeup_lms_dir, f'{base_name}.npy'))
 
@@ -107,7 +108,7 @@ def generate_metadata(args, config, device):
             x_high = h - (h - w + 1) // 2
         square_image = raw_image.crop((x_low, y_low, x_high, y_high))
         lms = preprocessor.lms_process(square_image)
-        mask = fix_mask_eyes(mask, lms)
+        mask = fix_mask_eyes(mask, lms, config.PREPROCESS.EYE_CLASS)
         mask.save(os.path.join(args.makeup_mask_dir, f'{base_name}.png'))
         preprocessor.save_lms(lms, os.path.join(args.makeup_lms_dir, f'{base_name}.npy'))
 
