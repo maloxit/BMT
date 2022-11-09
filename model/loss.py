@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision.transforms as vT
 import numpy as np
 
 
@@ -22,10 +23,34 @@ class SPLoss(nn.Module):
         return -(a + b) / h
 
 
+class SPLossWeighted(nn.Module):
+    def __init__(self):
+        super(SPLossWeighted, self).__init__()
+
+    def forward(self, input, reference, weights):
+        temp_a = torch.sum(
+            F.normalize(input, p=2.0, dim=2, eps=1e-4) * F.normalize(reference, p=2.0, dim=2, eps=1e-4) * weights,
+            2, keepdim=True)
+        temp_b = torch.sum(
+            F.normalize(input, p=2.0, dim=3, eps=1e-4) * F.normalize(reference, p=2.0, dim=3, eps=1e-4) * weights,
+            3, keepdim=True)
+        a = torch.sum(temp_a)
+        b = torch.sum(temp_b)
+        B, c, h, w = input.shape
+        return -(a + b) / h
+
+
 class GPLoss(nn.Module):
     def __init__(self):
         super(GPLoss, self).__init__()
-        self.trace = SPLoss()
+        self._w_trace = SPLossWeighted()
+        self._trace = SPLoss()
+
+    def trace(self, input, reference, weights):
+        if weights is None:
+            return self._trace(input, reference)
+        else:
+            return self._w_trace(input, reference, weights)
 
     def get_image_gradients(self, input):
         f_v_1 = input[:, :, :, :-1]
@@ -38,7 +63,7 @@ class GPLoss(nn.Module):
 
         return f_v, f_h
 
-    def forward(self, input, reference):
+    def forward(self, input, reference, weights=None):
         # comment these lines when you inputs and outputs are in [0,1] range already
         input = (input + 1) / 2
         reference = (reference + 1) / 2
@@ -46,8 +71,12 @@ class GPLoss(nn.Module):
         input_v, input_h = self.get_image_gradients(input)
         ref_v, ref_h = self.get_image_gradients(reference)
 
-        trace_v = self.trace(input_v, ref_v)
-        trace_h = self.trace(input_h, ref_h)
+        if weights is None:
+            trace_v = self.trace(input_v, ref_v, weights)
+            trace_h = self.trace(input_h, ref_h, weights)
+        else:
+            trace_v = self.trace(input_v, ref_v, weights[:, :, :, :-1])
+            trace_h = self.trace(input_h, ref_h, weights[:, :, :-1, :])
         return trace_v + trace_h
 
 
@@ -57,8 +86,14 @@ class CPLoss(nn.Module):
         self.rgb = rgb
         self.yuv = yuv
         self.yuvgrad = yuvgrad
-        self.trace = SPLoss()
-        self.trace_YUV = SPLoss()
+        self._w_trace = SPLossWeighted()
+        self._trace = SPLoss()
+
+    def trace(self, input, reference, weights):
+        if weights is None:
+            return self._trace(input, reference)
+        else:
+            return self._w_trace(input, reference, weights)
 
     def get_image_gradients(self, input):
         f_v_1 = input[:, :, :, :-1]
@@ -84,27 +119,68 @@ class CPLoss(nn.Module):
                                   0.587 * input[:, None, 1, :, :] +
                                   0.114 * input[:, None, 2, :, :]))], dim=1)
 
-    def forward(self, input, reference):
+    def forward(self, input, reference, weights=None):
         ## comment these lines when you inputs and outputs are in [0,1] range already
         input = (input + 1) / 2
         reference = (reference + 1) / 2
         total_loss = 0
         if self.rgb:
-            total_loss += self.trace(input, reference)
+            total_loss += self.trace(input, reference, weights)
         if self.yuv:
             input_yuv = self.to_YUV(input)
             reference_yuv = self.to_YUV(reference)
-            total_loss += self.trace(input_yuv, reference_yuv)
+            total_loss += self.trace(input_yuv, reference_yuv, weights)
         if self.yuvgrad:
             input_yuv = self.to_YUV(input)
             reference_yuv = self.to_YUV(reference)
             input_v, input_h = self.get_image_gradients(input_yuv)
             ref_v, ref_h = self.get_image_gradients(reference_yuv)
-
-            total_loss += self.trace(input_v, ref_v)
-            total_loss += self.trace(input_h, ref_h)
+            if weights is None:
+                total_loss += self.trace(input_v, ref_v, weights)
+                total_loss += self.trace(input_h, ref_h, weights)
+            else:
+                total_loss += self.trace(input_v, ref_v, weights[:, :, :, :-1])
+                total_loss += self.trace(input_h, ref_h, weights[:, :, :-1, :])
 
         return total_loss
+
+
+class WeightMaskGenerator(nn.Module):
+    def __init__(self):
+        super(WeightMaskGenerator, self).__init__()
+        self.big_blur = vT.GaussianBlur(101, 10.)
+        self.small_blur = vT.GaussianBlur(31, 2.)
+
+    def batch_max_normalization(self, input):
+        tmp = input.view(input.size(0), -1)
+        tmp = tmp / tmp.max(1, keepdim=True)[0]
+        return tmp.view(input.shape)
+
+    def batch_mean_normalization(self, input):
+        tmp = input.view(input.size(0), -1)
+        tmp = tmp / tmp.mean(1, keepdim=True)
+        return tmp.view(input.shape)
+
+    def forward(self, mask_parse, area_weights, eye_shadows_weight):
+        eyes_mask_l = mask_parse[:, 4, :, :].unsqueeze(1)
+        w_mask_l = self.big_blur(eyes_mask_l)
+        w_mask_l = w_mask_l * (1 - eyes_mask_l)
+        w_mask_l = self.small_blur(w_mask_l)
+        w_mask_l = self.batch_max_normalization(w_mask_l)
+
+        eyes_mask_r = mask_parse[:, 5, :, :].unsqueeze(1)
+        w_mask_r = self.big_blur(eyes_mask_r)
+        w_mask_r = w_mask_r * (1 - eyes_mask_r)
+        w_mask_r = self.small_blur(w_mask_r)
+        w_mask_r = self.batch_max_normalization(w_mask_r)
+
+        mask = torch.zeros_like(mask_parse[:, 0:1, :, :])
+        for i in range(len(area_weights)):
+            mask = mask + (mask_parse[:, i, :, :] * area_weights[i]).unsqueeze(1)
+        mask = torch.maximum(mask, w_mask_l * eye_shadows_weight)
+        mask = torch.maximum(mask, w_mask_r * eye_shadows_weight)
+        mask = self.batch_mean_normalization(mask)
+        return mask
 
 
 ####################################################################
@@ -166,6 +242,7 @@ class SAATGLoss(nn.Module):
 
         self.adv_loss = GANLoss(opts.gan_mode)
         self.criterionL1 = nn.L1Loss()
+        self.weight_mask_gen = WeightMaskGenerator()
         self.GPL = GPLoss()
         self.CPL = CPLoss(rgb=True, yuv=True, yuvgrad=True)
 
@@ -179,9 +256,10 @@ class SAATGLoss(nn.Module):
         self.false = torch.BoolTensor([False])
         self.true = torch.BoolTensor([True])
 
-    def forward(self, non_makeup, makeup, transfer, removal, non_makeup_parse, makeup_parse, generator_output: tuple = None):
+    def forward(self, non_makeup, makeup, transfer, removal, non_makeup_parse, makeup_parse,
+                generator_output: tuple = None, weighted=False):
         if generator_output is None:
-            z_transfer, z_removal, z_rec_non_makeup, z_rec_makeup, z_cycle_non_makeup, z_cycle_makeup, mapX, mapY =\
+            z_transfer, z_removal, z_rec_non_makeup, z_rec_makeup, z_cycle_non_makeup, z_cycle_makeup, mapX, mapY = \
                 self.gen(non_makeup, makeup, non_makeup_parse, makeup_parse)
         else:
             z_transfer, z_removal, z_rec_non_makeup, z_rec_makeup, z_cycle_non_makeup, z_cycle_makeup, mapX, mapY = \
@@ -219,14 +297,23 @@ class SAATGLoss(nn.Module):
         loss_G_semantic = (loss_G_semantic_makeup + loss_G_semantic_non_makeup) * 0.5 * self.semantic_weight
 
         # makeup loss
-        loss_G_CP = self.CPL(z_transfer, transfer) + self.CPL(z_removal, removal)
-        loss_G_GP = self.GPL(z_transfer, non_makeup) + self.GPL(z_removal, makeup)
+        area_weights = [0.05, 0.5, 1., 1., 1., 1., 1., 2., 1, 2., 0.2, 1., 1., 0.5]
+        eye_shadows_weight = 3.
+        if weighted:
+            non_makeup_weights = self.weight_mask_gen(non_makeup_parse, area_weights, eye_shadows_weight)
+            makeup_weights = self.weight_mask_gen(makeup_parse, area_weights, eye_shadows_weight)
+        else:
+            non_makeup_weights = None
+            makeup_weights = None
+
+        loss_G_CP = self.CPL(z_transfer, transfer, non_makeup_weights) + self.CPL(z_removal, removal, makeup_weights)
+        loss_G_GP = self.GPL(z_transfer, non_makeup, non_makeup_weights) + self.GPL(z_removal, makeup, makeup_weights)
         loss_G_SPL = loss_G_CP * self.CP_weight + loss_G_GP * self.GP_weight
 
         loss_G = loss_G_GAN + loss_G_rec + loss_G_cycle + loss_G_semantic + loss_G_SPL
 
-        return loss_G, z_transfer, z_removal, z_rec_non_makeup, z_rec_makeup, z_cycle_non_makeup, z_cycle_makeup,\
-            mapX, mapY
+        return loss_G, z_transfer, z_removal, z_rec_non_makeup, z_rec_makeup, z_cycle_non_makeup, z_cycle_makeup, \
+               mapX, mapY
 
 
 if __name__ == '__main__':
