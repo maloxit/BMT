@@ -312,7 +312,9 @@ class SAATGLoss(nn.Module):
 
         loss_G = loss_G_GAN + loss_G_rec + loss_G_cycle + loss_G_semantic + loss_G_SPL
 
-        return loss_G, z_transfer, z_removal, z_rec_non_makeup, z_rec_makeup, z_cycle_non_makeup, z_cycle_makeup, \
+        loss_distr = ((loss_G_GAN / loss_G).item(), (loss_G_rec / loss_G).item(), (loss_G_cycle / loss_G).item(), (loss_G_semantic / loss_G).item(), (loss_G_SPL / loss_G).item())
+
+        return loss_G, loss_distr, z_transfer, z_removal, z_rec_non_makeup, z_rec_makeup, z_cycle_non_makeup, z_cycle_makeup, \
                mapX, mapY
 
 
