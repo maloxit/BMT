@@ -51,6 +51,8 @@ class MakeupDataset(data.Dataset):
 
     def load_img(self, img_path, angle=0):
         img = cv2.imread(img_path)
+        if img is None:
+            return None
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         img = self.rotate(img, angle)
         return img
@@ -94,12 +96,11 @@ class MakeupDataset(data.Dataset):
         else:
             non_makeup_index = index
             makeup_index = random.randint(0, self.makeup_size - 1)
-        
 
         non_makeup_img = self.load_img(os.path.join(self.non_makeup_dir, self.name_non_makeup[non_makeup_index]),
                                        non_makeup_angle)
         makeup_img = self.load_img(os.path.join(self.makeup_dir, self.name_makeup[makeup_index]), makeup_angle)
-        
+
         non_makeup_name = os.path.splitext(self.name_non_makeup[non_makeup_index])[0]
         makeup_name = os.path.splitext(self.name_makeup[makeup_index])[0]
 
@@ -129,8 +130,23 @@ class MakeupDataset(data.Dataset):
             if mode is not None:
                 self.generator.generate(self.name_non_makeup[non_makeup_index], self.name_makeup[makeup_index],
                                         mode=mode)
-            transfer_img = self.load_img(transfer_path, non_makeup_angle)
-            removal_img = self.load_img(removal_path, makeup_angle)
+            while True:
+                transfer_img = self.load_img(transfer_path, non_makeup_angle)
+                if transfer_img is not None:
+                    break
+                print(f"Error: failed to load {transfer_path}")
+                transfer_path = os.path.join(self.warp_path, transfer_name)
+                self.generator.generate(self.name_non_makeup[non_makeup_index], self.name_makeup[makeup_index],
+                                        mode='transfer')
+
+            while True:
+                removal_img = self.load_img(removal_path, makeup_angle)
+                if removal_img is not None:
+                    break
+                print(f"Error: failed to load {removal_path}")
+                removal_path = os.path.join(self.warp_path, removal_name)
+                self.generator.generate(self.name_non_makeup[non_makeup_index], self.name_makeup[makeup_index],
+                                        mode='removal')
 
         # preprocessing
         non_makeup_img, makeup_img, non_makeup_parse, makeup_parse, transfer_img, removal_img = self.preprocessing(
