@@ -20,8 +20,8 @@ def fix_mask_eyes(mask, lms, eye_class):
     mask_img = transforms.ToPILImage()(mask.squeeze(0).type(torch.ByteTensor))
     draw = ImageDraw.Draw(mask_img)
     lms = lms.numpy()
-    points1 = [(lms[i, 1], lms[i, 0]) for i in range(42, 48)]
-    points2 = [(lms[i, 1], lms[i, 0]) for i in range(36, 42)]
+    points1 = [(int(lms[i, 1]), int(lms[i, 0])) for i in range(42, 48)]
+    points2 = [(int(lms[i, 1]), int(lms[i, 0])) for i in range(36, 42)]
     color1 = eye_class[0]
     color2 = eye_class[1]
     for fill_color, points in zip((color1, color2), (points1, points2)):
