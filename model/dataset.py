@@ -4,24 +4,12 @@ import shutil
 import random
 import numpy as np
 from PIL import Image
-from collections import namedtuple
 import torch.utils.data as data
 import jsonpickle
 
 from dataset_generator.datasets import GeneratorManager
+from model.subset import SubsetConfig, DataItem
 
-
-class SubsetConfig(object):
-    def __init__(self, data_type, lms_dir, mask_dir, image_dir, list_mode, filename_list):
-        self.data_type = data_type
-        self.lms_dir = lms_dir
-        self.mask_dir = mask_dir
-        self.image_dir = image_dir
-        self.list_mode = list_mode
-        self.filename_list = filename_list
-
-
-DataItem = namedtuple('DataItem', ['image_file_name', 'subset_config'])
 
 
 class MakeupDataset(data.Dataset):

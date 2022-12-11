@@ -1,5 +1,5 @@
 {
-    "py/object": "model.dataset.SubsetConfig",
+    "py/object": "model.subset.SubsetConfig",
     "data_type": "MAKEUP",
     "lms_dir": "datasets/test/lms/makeup",
     "mask_dir": "datasets/test/seg1/makeup",

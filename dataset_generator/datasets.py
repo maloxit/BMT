@@ -7,11 +7,14 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision.utils import save_image
 from torchvision import transforms
 import argparse
+import jsonpickle
 from tqdm import tqdm
 
 from dataset_generator.generator import PGT_generator
 from dataset_generator.config import get_config
 from dataset_generator.training.preprocess import PreProcess
+
+from model.subset import SubsetConfig, DataItem
 
 
 def fix_mask_eyes(mask, lms, eye_class):
@@ -46,27 +49,31 @@ def fix_mask_eyes(mask, lms, eye_class):
             draw.polygon(points, fill=fill_color)
     return mask_img
 
-def generate_metadata(args, config, device):
+def generate_metadata(subset_config_files, config, device):
     preprocessor = PreProcess(config, device=device)
-    n_img_names = sorted(os.listdir(args.non_makeup_dir))
-    m_img_names = sorted(os.listdir(args.makeup_dir))
-    if n_img_names[0].startswith('.ipynb'):
-        n_img_names.pop(0)
-    if m_img_names[0].startswith('.ipynb'):
-        m_img_names.pop(0)
 
-    if not os.path.exists(args.non_makeup_mask_dir):
-        os.makedirs(args.non_makeup_mask_dir)
-    if not os.path.exists(args.non_makeup_lms_dir):
-        os.makedirs(args.non_makeup_lms_dir)
-    if not os.path.exists(args.makeup_mask_dir):
-        os.makedirs(args.makeup_mask_dir)
-    if not os.path.exists(args.makeup_lms_dir):
-        os.makedirs(args.makeup_lms_dir)
+    items: list[DataItem] = []
 
-    for img_name in tqdm(n_img_names):
-        raw_image = Image.open(os.path.join(args.non_makeup_dir, img_name)).convert('RGB')
-        base_name = os.path.splitext(img_name)[0]
+    for subset_config_file in subset_config_files:
+        subset_config: SubsetConfig = jsonpickle.decode(open(subset_config_file).read())
+
+        if not os.path.exists(subset_config.mask_dir):
+            os.makedirs(subset_config.mask_dir)
+        if not os.path.exists(subset_config.lms_dir):
+            os.makedirs(subset_config.lms_dir)
+
+        if subset_config.list_mode == 'WHITE':
+            for filename in subset_config.filename_list:
+                items.append(DataItem(filename, subset_config))
+        else:
+            full_list = os.listdir(subset_config.image_dir)
+            for filename in full_list:
+                if filename not in subset_config.filename_list:
+                    items.append(DataItem(filename, subset_config))
+
+    for item in tqdm(items):
+        raw_image = Image.open(os.path.join(item.subset_config.image_dir, item.image_file_name)).convert('RGB')
+        base_name = os.path.splitext(item.image_file_name)[0]
         mask = preprocessor.face_parse.parse(raw_image)
         # obtain face parsing result
         # mask: Tensor, (512, 512)
@@ -85,32 +92,8 @@ def generate_metadata(args, config, device):
         square_image = raw_image.crop((x_low, y_low, x_high, y_high))
         lms = preprocessor.lms_process(square_image)
         mask = fix_mask_eyes(mask, lms, config.PREPROCESS.EYE_CLASS)
-        mask.save(os.path.join(args.non_makeup_mask_dir, f'{base_name}.png'))
-        preprocessor.save_lms(lms, os.path.join(args.non_makeup_lms_dir, f'{base_name}.npy'))
-
-    for img_name in tqdm(m_img_names):
-        raw_image = Image.open(os.path.join(args.makeup_dir, img_name)).convert('RGB')
-        base_name = os.path.splitext(img_name)[0]
-        mask = preprocessor.face_parse.parse(raw_image)
-        # obtain face parsing result
-        # mask: Tensor, (512, 512)
-        mask = F.interpolate(
-            mask.view(1, 1, 512, 512),
-            (preprocessor.img_size, preprocessor.img_size),
-            mode="nearest").squeeze(0).long()  # (1, H, W)
-        h, w = raw_image.size
-        x_low, y_low, x_high, y_high = (0,0,h,w)
-        if h < w:
-            y_low = (w - h) // 2
-            y_high = w - (w - h + 1) // 2
-        else:
-            x_low = (h - w) // 2
-            x_high = h - (h - w + 1) // 2
-        square_image = raw_image.crop((x_low, y_low, x_high, y_high))
-        lms = preprocessor.lms_process(square_image)
-        mask = fix_mask_eyes(mask, lms, config.PREPROCESS.EYE_CLASS)
-        mask.save(os.path.join(args.makeup_mask_dir, f'{base_name}.png'))
-        preprocessor.save_lms(lms, os.path.join(args.makeup_lms_dir, f'{base_name}.npy'))
+        mask.save(os.path.join(item.subset_config.mask_dir, f'{base_name}.png'))
+        preprocessor.save_lms(lms, os.path.join(item.subset_config.lms_dir, f'{base_name}.npy'))
 
 
 class PGTGeneratorDataset(Dataset):
@@ -124,24 +107,33 @@ class PGTGeneratorDataset(Dataset):
             os.makedirs(self.warp_alt_dir)
         if not os.path.exists(self.warp_storage_dir):
             os.makedirs(self.warp_storage_dir)
+        subset_config_files = args.subset_config_files
 
+        self.makeup_items: list[DataItem] = []
+        self.non_makeup_items: list[DataItem] = []
 
-        self.non_makeup_dir = args.non_makeup_dir
-        self.non_makeup_mask_dir = args.non_makeup_mask_dir
-        self.non_makeup_lms_dir = args.non_makeup_lms_dir
-        self.makeup_dir = args.makeup_dir
-        self.makeup_mask_dir = args.makeup_mask_dir
-        self.makeup_lms_dir = args.makeup_lms_dir
-        self.n_img_names = sorted(os.listdir(args.non_makeup_dir))
-        self.m_img_names = sorted(os.listdir(args.makeup_dir))
+        for subset_config_file in subset_config_files:
+            subset_config: SubsetConfig = jsonpickle.decode(open(subset_config_file).read())
+
+            if subset_config.data_type == 'MAKEUP':
+                items = self.makeup_items
+            else:
+                items = self.non_makeup_items
+            if subset_config.list_mode == 'WHITE':
+                for filename in subset_config.filename_list:
+                    items.append(DataItem(filename, subset_config))
+            else:
+                full_list = os.listdir(subset_config.image_dir)
+                for filename in full_list:
+                    if filename not in subset_config.filename_list:
+                        items.append(DataItem(filename, subset_config))
+        
+        self.makeup_items.sort(lambda x: x.image_file_name)
+        
         if 'skip_to_index' in vars(args).keys():
             self.skip_to_index = args.skip_to_index
         else:
             self.skip_to_index = -1
-        if self.n_img_names[0].startswith('.ipynb'):
-            self.n_img_names.pop(0)
-        if self.m_img_names[0].startswith('.ipynb'):
-            self.m_img_names.pop(0)
         self.preprocessor = PreProcess(config, need_parser=False, device=device)
         self.img_size = config.DATA.IMG_SIZE
 
@@ -156,16 +148,16 @@ class PGTGeneratorDataset(Dataset):
     def __getitem__(self, index):
         if index < self.skip_to_index:
             return {'index': index}
-        non_make_up_index = index // len(self.m_img_names)
-        make_up_index = index % len(self.m_img_names)
-        non_make_up_name = self.n_img_names[non_make_up_index]
-        make_up_name = self.m_img_names[make_up_index]
+        non_makeup_index = index // len(self.makeup_items)
+        makeup_index = index % len(self.makeup_items)
+        non_makeup_item = self.non_makeup_items[non_makeup_index]
+        makeup_item = self.makeup_items[makeup_index]
 
-        non_make_up_name_base = os.path.splitext(non_make_up_name)[0]
-        make_up_name_base = os.path.splitext(make_up_name)[0]
+        non_makeup_name_base = os.path.splitext(non_makeup_item.image_file_name)[0]
+        makeup_name_base = os.path.splitext(makeup_item.image_file_name)[0]
 
-        removal_name = make_up_name_base + '_' + non_make_up_name_base + '.png'
-        transfer_name = non_make_up_name_base + '_' + make_up_name_base + '.png'
+        removal_name = makeup_name_base + '_' + non_makeup_name_base + '.png'
+        transfer_name = non_makeup_name_base + '_' + makeup_name_base + '.png'
         modes = ['None', 'transfer', 'removal', 'both']
         mode = 0
         transfer_path = os.path.join(self.warp_alt_dir, transfer_name)
@@ -181,13 +173,13 @@ class PGTGeneratorDataset(Dataset):
         mode = modes[mode]
         if mode == 'None':
             return {'index': index}
-        non_makeup = self.load_from_file(non_make_up_name, self.non_makeup_dir, self.non_makeup_mask_dir, self.non_makeup_lms_dir)
-        makeup = self.load_from_file(make_up_name, self.makeup_dir, self.makeup_mask_dir, self.makeup_lms_dir)
+        non_makeup = self.load_from_file(non_makeup_item.image_file_name, non_makeup_item.subset_config.image_dir, non_makeup_item.subset_config.mask_dir, non_makeup_item.subset_config.lms_dir)
+        makeup = self.load_from_file(makeup_item.image_file_name, makeup_item.subset_config.image_dir, makeup_item.subset_config.mask_dir, makeup_item.subset_config.lms_dir)
         data = {
             'index': index,
-            'non_make_up_name': non_make_up_name,
+            'non_make_up_name': non_makeup_item.image_file_name,
             'non_makeup': non_makeup,
-            'make_up_name': make_up_name,
+            'make_up_name': makeup_item.image_file_name,
             'makeup': makeup,
             'generate_mode': mode
         }
@@ -293,12 +285,18 @@ def run():
     parser.add_argument("--storage-every", type=int, default=600)
     parser.add_argument("--skip-to-index", type=int, default=-1)
 
-    parser.add_argument("--non-makeup-dir", type=str, default="datasets/train/images/non-makeup")
-    parser.add_argument("--non-makeup-mask-dir", type=str, default="datasets/train/seg1/non-makeup")
-    parser.add_argument("--non-makeup-lms-dir", type=str, default="datasets/train/lms/non-makeup")
-    parser.add_argument("--makeup-dir", type=str, default="datasets/train/images/makeup")
-    parser.add_argument("--makeup-mask-dir", type=str, default="datasets/train/seg1/makeup")
-    parser.add_argument("--makeup-lms-dir", type=str, default="datasets/train/lms/makeup")
+    parser.add_argument("--subset-config-files", nargs='+', default=[
+        'datasets/train_makeup_blue_shades.json',
+        'datasets/train_makeup_dark_shades.json',
+        'datasets/train_makeup_new_makeup.json',
+        'datasets/train_makeup_other.json',
+        'datasets/train_makeup_purpule_shades.json',
+        'datasets/train_makeup_red_eyes.json',
+        'datasets/train_makeup_weak1.json',
+        'datasets/train_makeup_weak2.json',
+        'datasets/train_makeup_weak3.json',
+        'datasets/train_non_makeup.json'
+        ])
     parser.add_argument("--gpu", default='0', type=str, help="GPU id to use.")
     parser.add_argument("--skip-metadata", action='store_true', help="Do not generate metadata.")
     parser.add_argument("--metadata-only", action='store_true', help="Only generate metadata.")
@@ -312,7 +310,7 @@ def run():
 
     config = get_config()
     if not args.skip_metadata:
-        generate_metadata(args, config, args.device)
+        generate_metadata(args.subset_config_files, config, args.device)
     if not args.metadata_only:
         generator_manager = GeneratorManager(args, args.device)
         generator_manager.generate_dataset()

@@ -1,0 +1,9 @@
+{
+    "py/object": "model.subset.SubsetConfig",
+    "data_type": "NON_MAKEUP",
+    "lms_dir": "datasets/train/lms/non-makeup",
+    "mask_dir": "datasets/train/seg1/non-makeup",
+    "image_dir": "datasets/train/images/non-makeup",
+    "list_mode": "BLACK",
+    "filename_list": []
+}

@@ -16,12 +16,18 @@ class MakeupOptions:
         self.parser.add_argument("--warp-alt-dir", type=str, default='datasets/train/images/wrap', help="path to warp results")
         self.parser.add_argument("--warp-storage-dir", type=str, default='datasets/train/images/wrap_storage')
 
-        self.parser.add_argument("--non-makeup-dir", type=str, default="datasets/train/images/non-makeup")
-        self.parser.add_argument("--non-makeup-mask-dir", type=str, default="datasets/train/seg1/non-makeup")
-        self.parser.add_argument("--non-makeup-lms-dir", type=str, default="datasets/train/lms/non-makeup")
-        self.parser.add_argument("--makeup-dir", type=str, default="datasets/train/images/makeup")
-        self.parser.add_argument("--makeup-mask-dir", type=str, default="datasets/train/seg1/makeup")
-        self.parser.add_argument("--makeup-lms-dir", type=str, default="datasets/train/lms/makeup")
+        self.parser.add_argument("--subset-config-files", nargs='+', default=[
+            'datasets/train_makeup_blue_shades.json',
+            'datasets/train_makeup_dark_shades.json',
+            'datasets/train_makeup_new_makeup.json',
+            'datasets/train_makeup_other.json',
+            'datasets/train_makeup_purpule_shades.json',
+            'datasets/train_makeup_red_eyes.json',
+            'datasets/train_makeup_weak1.json',
+            'datasets/train_makeup_weak2.json',
+            'datasets/train_makeup_weak3.json',
+            'datasets/train_non_makeup.json'
+            ])
 
         self.parser.add_argument('--input_dim', type=int, default=3, help='input_dim')
         self.parser.add_argument('--output_dim', type=int, default=3, help='output_dim')
