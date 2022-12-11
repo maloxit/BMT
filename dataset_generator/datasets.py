@@ -115,8 +115,17 @@ def generate_metadata(args, config, device):
 
 class PGTGeneratorDataset(Dataset):
     def __init__(self, args, config, device):
-        self.warp_path = args.warp_path
-        self.warp_alt_path = args.warp_alt_path
+        self.warp_dir = args.warp_dir
+        self.warp_alt_dir = args.warp_alt_dir
+        self.warp_storage_dir = args.warp_storage_dir
+        if not os.path.exists(self.warp_dir):
+            os.makedirs(self.warp_dir)
+        if not os.path.exists(self.warp_alt_dir):
+            os.makedirs(self.warp_alt_dir)
+        if not os.path.exists(self.warp_storage_dir):
+            os.makedirs(self.warp_storage_dir)
+
+
         self.non_makeup_dir = args.non_makeup_dir
         self.non_makeup_mask_dir = args.non_makeup_mask_dir
         self.non_makeup_lms_dir = args.non_makeup_lms_dir
@@ -159,14 +168,14 @@ class PGTGeneratorDataset(Dataset):
         transfer_name = non_make_up_name_base + '_' + make_up_name_base + '.png'
         modes = ['None', 'transfer', 'removal', 'both']
         mode = 0
-        transfer_path = os.path.join(self.warp_alt_path, transfer_name)
+        transfer_path = os.path.join(self.warp_alt_dir, transfer_name)
         if not os.path.exists(transfer_path):
-            transfer_path = os.path.join(self.warp_path, transfer_name)
+            transfer_path = os.path.join(self.warp_dir, transfer_name)
             if not os.path.exists(transfer_path):
                 mode += 1
-        removal_path = os.path.join(self.warp_alt_path, removal_name)
+        removal_path = os.path.join(self.warp_alt_dir, removal_name)
         if not os.path.exists(removal_path):
-            removal_path = os.path.join(self.warp_path, removal_name)
+            removal_path = os.path.join(self.warp_dir, removal_name)
             if not os.path.exists(removal_path):
                 mode += 2
         mode = modes[mode]
@@ -190,33 +199,37 @@ class PGTGeneratorDataset(Dataset):
 
 class GeneratorManager:
     def __init__(self, args, device):
+        self.args = args
+        self.device = device
         self.config = get_config()
-        self.warp_path = args.warp_path
-        self.warp_alt_path = args.warp_alt_path
-        self.warp_storage = args.warp_storage
+        self.warp_dir = args.warp_dir
+        self.warp_alt_dir = args.warp_alt_dir
+        self.warp_storage_dir = args.warp_storage_dir
+
         if 'storage_every' in vars(args).keys():
             self.storage_every = args.storage_every
         else:
             self.storage_every = 1000
-        if not os.path.exists(args.warp_path):
-            os.makedirs(args.warp_path)
-        if not os.path.exists(args.warp_alt_path):
-            os.makedirs(args.warp_alt_path)
-        if not os.path.exists(args.warp_storage):
-            os.makedirs(args.warp_storage)
+        
+        if not os.path.exists(self.warp_dir):
+            os.makedirs(self.warp_dir)
+        if not os.path.exists(self.warp_alt_dir):
+            os.makedirs(self.warp_alt_dir)
+        if not os.path.exists(self.warp_storage_dir):
+            os.makedirs(self.warp_storage_dir)
 
         self.generator = PGT_generator(device)
-        self.dataset = PGTGeneratorDataset(args, self.config, device=device)
 
     def move_to_storage(self):
-        warp_names = os.listdir(self.warp_path)
+        warp_names = os.listdir(self.warp_dir)
         for warp_name in warp_names:
             if warp_name.startswith('.ipynb'):
                 continue
-            shutil.copy(os.path.join(self.warp_path, warp_name), os.path.join(self.warp_alt_path, warp_name))
-            shutil.move(os.path.join(self.warp_path, warp_name), os.path.join(self.warp_storage, warp_name))
+            shutil.copy(os.path.join(self.warp_dir, warp_name), os.path.join(self.warp_alt_dir, warp_name))
+            shutil.move(os.path.join(self.warp_dir, warp_name), os.path.join(self.warp_storage_dir, warp_name))
 
     def generate_dataset(self):
+        self.dataset = PGTGeneratorDataset(self.args, self.config, device=self.device)
         dataloader = DataLoader(dataset=self.dataset,
                                 batch_size=1,
                                 num_workers=1)
@@ -237,46 +250,46 @@ class GeneratorManager:
             make_up_name_base = os.path.splitext(make_up_name)[0]
             if generate_mode in ('both', 'transfer'):
                 transfer = self.generator.transfer(non_makeup, makeup)
-                transfer_save_path = os.path.join(self.warp_path, f"{non_make_up_name_base}_{make_up_name_base}.png")
+                transfer_save_path = os.path.join(self.warp_dir, f"{non_make_up_name_base}_{make_up_name_base}.png")
                 save_image(transfer, transfer_save_path)
             if generate_mode in ('both', 'removal'):
                 removal = self.generator.transfer(makeup, non_makeup)
-                removal_save_path = os.path.join(self.warp_path, f"{make_up_name_base}_{non_make_up_name_base}.png")
+                removal_save_path = os.path.join(self.warp_dir, f"{make_up_name_base}_{non_make_up_name_base}.png")
                 save_image(removal, removal_save_path)
 
-    def generate(self, non_make_up_name, make_up_name, mode='both'):
+    def generate(self, non_makeup_item, makeup_item, mode='both'):
         non_makeup = self.dataset.load_from_file(
-            non_make_up_name,
-            self.dataset.non_makeup_dir,
-            self.dataset.non_makeup_mask_dir,
-            self.dataset.non_makeup_lms_dir
+            non_makeup_item.image_file_name,
+            non_makeup_item.subset_config.non_makeup_image_dir,
+            non_makeup_item.subset_config.non_makeup_mask_dir,
+            non_makeup_item.subset_config.non_makeup_lms_dir
         )
         makeup = self.dataset.load_from_file(
-            make_up_name,
-            self.dataset.makeup_dir,
-            self.dataset.makeup_mask_dir,
-            self.dataset.makeup_lms_dir
+            makeup_item.image_file_name,
+            makeup_item.subset_config.makeup_image_dir,
+            makeup_item.subset_config.makeup_mask_dir,
+            makeup_item.subset_config.makeup_lms_dir
         )
         non_makeup = self.generator.prepare_input(*non_makeup, need_batches=True)
         makeup = self.generator.prepare_input(*makeup, need_batches=True)
-        non_make_up_name_base = os.path.splitext(non_make_up_name)[0]
-        make_up_name_base = os.path.splitext(make_up_name)[0]
+        non_make_up_name_base = os.path.splitext(non_makeup_item.image_file_name)[0]
+        make_up_name_base = os.path.splitext(makeup_item.image_file_name)[0]
         if mode in ('both', 'transfer'):
             transfer = self.generator.transfer(non_makeup, makeup)
-            transfer_save_path = os.path.join(self.warp_path, f"{non_make_up_name_base}_{make_up_name_base}.png")
+            transfer_save_path = os.path.join(self.warp_dir, f"{non_make_up_name_base}_{make_up_name_base}.png")
             save_image(transfer, transfer_save_path)
         if mode in ('both', 'removal'):
             removal = self.generator.transfer(makeup, non_makeup)
-            removal_save_path = os.path.join(self.warp_path, f"{make_up_name_base}_{non_make_up_name_base}.png")
+            removal_save_path = os.path.join(self.warp_dir, f"{make_up_name_base}_{non_make_up_name_base}.png")
             save_image(removal, removal_save_path)
 
 
 def run():
     parser = argparse.ArgumentParser("argument for training")
     parser.add_argument("--name", type=str, default='demo')
-    parser.add_argument("--warp-path", type=str, default='datasets/train/images/wrap_tmp', help="path to warp results")
-    parser.add_argument("--warp-alt-path", type=str, default='datasets/train/images/wrap', help="path to warp results")
-    parser.add_argument("--warp-storage", type=str, default='datasets/train/images/wrap_storage')
+    parser.add_argument("--warp-dir", type=str, default='datasets/train/images/wrap_tmp', help="path to warp results")
+    parser.add_argument("--warp-alt-dir", type=str, default='datasets/train/images/wrap', help="path to warp results")
+    parser.add_argument("--warp-storage-dir", type=str, default='datasets/train/images/wrap_storage')
     parser.add_argument("--storage-every", type=int, default=600)
     parser.add_argument("--skip-to-index", type=int, default=-1)
 

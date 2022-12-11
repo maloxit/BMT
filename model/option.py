@@ -12,9 +12,9 @@ class MakeupOptions:
         self.opt = None
         self.parser = argparse.ArgumentParser()
         # data loader related
-        self.parser.add_argument("--warp-path", type=str, default='datasets/train/images/wrap_tmp', help="path to warp results")
-        self.parser.add_argument("--warp-alt-path", type=str, default='datasets/train/images/wrap', help="path to warp results")
-        self.parser.add_argument("--warp-storage", type=str, default='datasets/train/images/wrap_storage')
+        self.parser.add_argument("--warp-dir", type=str, default='datasets/train/images/wrap_tmp', help="path to warp results")
+        self.parser.add_argument("--warp-alt-dir", type=str, default='datasets/train/images/wrap', help="path to warp results")
+        self.parser.add_argument("--warp-storage-dir", type=str, default='datasets/train/images/wrap_storage')
 
         self.parser.add_argument("--non-makeup-dir", type=str, default="datasets/train/images/non-makeup")
         self.parser.add_argument("--non-makeup-mask-dir", type=str, default="datasets/train/seg1/non-makeup")

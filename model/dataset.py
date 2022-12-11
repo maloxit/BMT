@@ -4,45 +4,83 @@ import shutil
 import random
 import numpy as np
 from PIL import Image
+from collections import namedtuple
 import torch.utils.data as data
+import jsonpickle
 
 from dataset_generator.datasets import GeneratorManager
+
+
+class SubsetConfig(object):
+    def __init__(self, makeup_lms_dir, makeup_mask_dir, makeup_image_dir, makeup_list_mode, makeup_filename_list, 
+                non_makeup_lms_dir, non_makeup_mask_dir, non_makeup_image_dir, non_makeup_list_mode, non_makeup_filename_list):
+        self.makeup_lms_dir = makeup_lms_dir
+        self.makeup_mask_dir = makeup_mask_dir
+        self.makeup_image_dir = makeup_image_dir
+        self.makeup_list_mode = makeup_list_mode
+        self.makeup_filename_list = makeup_filename_list
+        self.non_makeup_lms_dir = non_makeup_lms_dir
+        self.non_makeup_mask_dir = non_makeup_mask_dir
+        self.non_makeup_image_dir = non_makeup_image_dir
+        self.non_makeup_list_mode = non_makeup_list_mode
+        self.non_makeup_filename_list = non_makeup_filename_list
+
+
+DataItem = namedtuple('DataItem', ['image_file_name', 'subset_config'])
 
 
 class MakeupDataset(data.Dataset):
     """import dataset"""
 
-    def __init__(self, opts, device, *, transform=True, need_pgt=True, all_comb=False):
+    def __init__(self, opts, device, subset_config_files, *, transform=True, need_pgt=True, all_comb=False):
         """init"""
         self.transform = transform
         self.need_pgt = need_pgt
         self.all_comb = all_comb
         self.opt = opts
         self.semantic_dim = opts.semantic_dim
-        self.non_makeup_dir = opts.non_makeup_dir
-        self.non_makeup_mask_dir = opts.non_makeup_mask_dir
-        self.makeup_dir = opts.makeup_dir
-        self.makeup_mask_dir = opts.makeup_mask_dir
-        self.warp_path = opts.warp_path
-        if not os.path.exists(self.warp_path):
-            os.makedirs(self.warp_path)
-        self.warp_alt_path = opts.warp_alt_path
-        if not os.path.exists(self.warp_alt_path):
-            os.makedirs(self.warp_alt_path)
-        self.warp_storage = opts.warp_storage
-        if not os.path.exists(self.warp_storage):
-            os.makedirs(self.warp_storage)
+
+        self.warp_dir = opts.warp_dir
+        self.warp_alt_dir = opts.warp_alt_dir
+        self.warp_storage_dir = opts.warp_storage_dir
+        if not os.path.exists(self.warp_dir):
+            os.makedirs(self.warp_dir)
+        if not os.path.exists(self.warp_alt_dir):
+            os.makedirs(self.warp_alt_dir)
+        if not os.path.exists(self.warp_storage_dir):
+            os.makedirs(self.warp_storage_dir)
+    
 
         self.generator = GeneratorManager(opts, device)
 
-        # non_makeup
-        self.name_non_makeup = os.listdir(self.non_makeup_dir)
+        self.makeup_items: list[DataItem] = []
+        self.non_makeup_items: list[DataItem] = []
 
-        # makeup
-        self.name_makeup = os.listdir(self.makeup_dir)
+        for subset_config_file in subset_config_files:
+            subset_config = jsonpickle.decode(open(subset_config_file).read())
 
-        self.non_makeup_size = len(self.name_non_makeup)
-        self.makeup_size = len(self.name_makeup)
+            if subset_config.makeup_list_mode == 'WHITE':
+                for filename in subset_config.makeup_filename_list:
+                    self.makeup_items.append(DataItem(filename, subset_config))
+            else:
+                full_list = os.listdir(subset_config.makeup_image_dir)
+                for filename in full_list:
+                    if filename not in subset_config.makeup_filename_list:
+                        self.makeup_items.append(DataItem(filename, subset_config))
+            
+            if subset_config.non_makeup_list_mode == 'WHITE':
+                for filename in subset_config.non_makeup_filename_list:
+                    self.non_makeup_items.append(DataItem(filename, subset_config))
+            else:
+                full_list = os.listdir(subset_config.non_makeup_image_dir)
+                for filename in full_list:
+                    if filename not in subset_config.non_makeup_filename_list:
+                        self.non_makeup_items.append(DataItem(filename, subset_config))
+
+
+
+        self.non_makeup_size = len(self.non_makeup_items)
+        self.makeup_size = len(self.makeup_items)
         print('non_makeup size:', self.non_makeup_size, 'makeup size:', self.makeup_size)
         if self.all_comb:
             self.dataset_size = self.non_makeup_size * self.makeup_size
@@ -75,12 +113,12 @@ class MakeupDataset(data.Dataset):
         return img
 
     def move_warp_to_storage(self):
-        warp_names = os.listdir(self.warp_path)
+        warp_names = os.listdir(self.warp_dir)
         for warp_name in warp_names:
             if warp_name.startswith('.ipynb'):
                 continue
-            shutil.copy(os.path.join(self.warp_path, warp_name), os.path.join(self.warp_alt_path, warp_name))
-            shutil.move(os.path.join(self.warp_path, warp_name), os.path.join(self.warp_storage, warp_name))
+            shutil.copy(os.path.join(self.warp_dir, warp_name), os.path.join(self.warp_alt_dir, warp_name))
+            shutil.move(os.path.join(self.warp_dir, warp_name), os.path.join(self.warp_storage_dir, warp_name))
 
     def __getitem__(self, index):
         if self.transform and np.random.random() > 0.5:
@@ -97,16 +135,19 @@ class MakeupDataset(data.Dataset):
             non_makeup_index = index
             makeup_index = random.randint(0, self.makeup_size - 1)
 
-        non_makeup_img = self.load_img(os.path.join(self.non_makeup_dir, self.name_non_makeup[non_makeup_index]),
-                                       non_makeup_angle)
-        makeup_img = self.load_img(os.path.join(self.makeup_dir, self.name_makeup[makeup_index]), makeup_angle)
+        non_makeup_item = self.non_makeup_items[non_makeup_index]
+        makeup_item = self.makeup_items[makeup_index]
 
-        non_makeup_name = os.path.splitext(self.name_non_makeup[non_makeup_index])[0]
-        makeup_name = os.path.splitext(self.name_makeup[makeup_index])[0]
+        non_makeup_img = self.load_img(os.path.join(non_makeup_item.subset_config.non_makeup_image_dir, non_makeup_item.image_file_name),
+                                       non_makeup_angle)
+        makeup_img = self.load_img(os.path.join(makeup_item.subset_config.makeup_image_dir, makeup_item.image_file_name), makeup_angle)
+
+        non_makeup_name = os.path.splitext(non_makeup_item.image_file_name)[0]
+        makeup_name = os.path.splitext(makeup_item.image_file_name)[0]
 
         non_makeup_parse = self.load_parse(
-            os.path.join(self.non_makeup_mask_dir, f'{non_makeup_name}.png'), non_makeup_angle)
-        makeup_parse = self.load_parse(os.path.join(self.makeup_mask_dir, f'{makeup_name}.png'), makeup_angle)
+            os.path.join(non_makeup_item.subset_config.non_makeup_mask_dir, f'{non_makeup_name}.png'), non_makeup_angle)
+        makeup_parse = self.load_parse(os.path.join(makeup_item.subset_config.makeup_mask_dir, f'{makeup_name}.png'), makeup_angle)
 
         # load groundtrue
         transfer_img = None
@@ -116,27 +157,27 @@ class MakeupDataset(data.Dataset):
             transfer_name = non_makeup_name + '_' + makeup_name + '.png'
             modes = [None, 'transfer', 'removal', 'both']
             mode = 0
-            transfer_path = os.path.join(self.warp_alt_path, transfer_name)
+            transfer_path = os.path.join(self.warp_alt_dir, transfer_name)
             if not os.path.exists(transfer_path):
-                transfer_path = os.path.join(self.warp_path, transfer_name)
+                transfer_path = os.path.join(self.warp_dir, transfer_name)
                 if not os.path.exists(transfer_path):
                     mode += 1
-            removal_path = os.path.join(self.warp_alt_path, removal_name)
+            removal_path = os.path.join(self.warp_alt_dir, removal_name)
             if not os.path.exists(removal_path):
-                removal_path = os.path.join(self.warp_path, removal_name)
+                removal_path = os.path.join(self.warp_dir, removal_name)
                 if not os.path.exists(removal_path):
                     mode += 2
             mode = modes[mode]
             if mode is not None:
-                self.generator.generate(self.name_non_makeup[non_makeup_index], self.name_makeup[makeup_index],
+                self.generator.generate(non_makeup_item, makeup_item,
                                         mode=mode)
             while True:
                 transfer_img = self.load_img(transfer_path, non_makeup_angle)
                 if transfer_img is not None:
                     break
                 print(f"Error: failed to load {transfer_path}")
-                transfer_path = os.path.join(self.warp_path, transfer_name)
-                self.generator.generate(self.name_non_makeup[non_makeup_index], self.name_makeup[makeup_index],
+                transfer_path = os.path.join(self.warp_dir, transfer_name)
+                self.generator.generate(non_makeup_item, makeup_item,
                                         mode='transfer')
 
             while True:
@@ -144,8 +185,8 @@ class MakeupDataset(data.Dataset):
                 if removal_img is not None:
                     break
                 print(f"Error: failed to load {removal_path}")
-                removal_path = os.path.join(self.warp_path, removal_name)
-                self.generator.generate(self.name_non_makeup[non_makeup_index], self.name_makeup[makeup_index],
+                removal_path = os.path.join(self.warp_dir, removal_name)
+                self.generator.generate(non_makeup_item, makeup_item,
                                         mode='removal')
 
         # preprocessing
