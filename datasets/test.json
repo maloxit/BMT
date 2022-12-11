@@ -1,5 +1,5 @@
 {
-    "py/object": "__main__.SubsetConfig",
+    "py/object": "model.dataset.SubsetConfig",
     "makeup_lms_dir": "datasets/train/lms/makeup",
     "makeup_mask_dir": "datasets/train/seg1/makeup",
     "makeup_image_dir": "datasets/train/images/makeup",
