@@ -128,7 +128,7 @@ class PGTGeneratorDataset(Dataset):
                     if filename not in subset_config.filename_list:
                         items.append(DataItem(filename, subset_config))
         
-        self.makeup_items.sort(lambda x: x.image_file_name)
+        self.makeup_items.sort(key=lambda x: x.image_file_name)
         
         if 'skip_to_index' in vars(args).keys():
             self.skip_to_index = args.skip_to_index
