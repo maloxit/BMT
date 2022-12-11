@@ -219,6 +219,7 @@ class GeneratorManager:
             os.makedirs(self.warp_storage_dir)
 
         self.generator = PGT_generator(device)
+        self.dataset = PGTGeneratorDataset(self.args, self.config, device=self.device)
 
     def move_to_storage(self):
         warp_names = os.listdir(self.warp_dir)
@@ -229,7 +230,6 @@ class GeneratorManager:
             shutil.move(os.path.join(self.warp_dir, warp_name), os.path.join(self.warp_storage_dir, warp_name))
 
     def generate_dataset(self):
-        self.dataset = PGTGeneratorDataset(self.args, self.config, device=self.device)
         dataloader = DataLoader(dataset=self.dataset,
                                 batch_size=1,
                                 num_workers=1)
