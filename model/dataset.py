@@ -12,18 +12,13 @@ from dataset_generator.datasets import GeneratorManager
 
 
 class SubsetConfig(object):
-    def __init__(self, makeup_lms_dir, makeup_mask_dir, makeup_image_dir, makeup_list_mode, makeup_filename_list, 
-                non_makeup_lms_dir, non_makeup_mask_dir, non_makeup_image_dir, non_makeup_list_mode, non_makeup_filename_list):
-        self.makeup_lms_dir = makeup_lms_dir
-        self.makeup_mask_dir = makeup_mask_dir
-        self.makeup_image_dir = makeup_image_dir
-        self.makeup_list_mode = makeup_list_mode
-        self.makeup_filename_list = makeup_filename_list
-        self.non_makeup_lms_dir = non_makeup_lms_dir
-        self.non_makeup_mask_dir = non_makeup_mask_dir
-        self.non_makeup_image_dir = non_makeup_image_dir
-        self.non_makeup_list_mode = non_makeup_list_mode
-        self.non_makeup_filename_list = non_makeup_filename_list
+    def __init__(self, data_type, lms_dir, mask_dir, image_dir, list_mode, filename_list):
+        self.data_type = data_type
+        self.lms_dir = lms_dir
+        self.mask_dir = mask_dir
+        self.image_dir = image_dir
+        self.list_mode = list_mode
+        self.filename_list = filename_list
 
 
 DataItem = namedtuple('DataItem', ['image_file_name', 'subset_config'])
@@ -57,26 +52,20 @@ class MakeupDataset(data.Dataset):
         self.non_makeup_items: list[DataItem] = []
 
         for subset_config_file in subset_config_files:
-            subset_config = jsonpickle.decode(open(subset_config_file).read())
+            subset_config: SubsetConfig = jsonpickle.decode(open(subset_config_file).read())
 
-            if subset_config.makeup_list_mode == 'WHITE':
-                for filename in subset_config.makeup_filename_list:
-                    self.makeup_items.append(DataItem(filename, subset_config))
+            if subset_config.data_type == 'MAKEUP':
+                items = self.makeup_items
             else:
-                full_list = os.listdir(subset_config.makeup_image_dir)
-                for filename in full_list:
-                    if filename not in subset_config.makeup_filename_list:
-                        self.makeup_items.append(DataItem(filename, subset_config))
-            
-            if subset_config.non_makeup_list_mode == 'WHITE':
-                for filename in subset_config.non_makeup_filename_list:
-                    self.non_makeup_items.append(DataItem(filename, subset_config))
+                items = self.non_makeup_items
+            if subset_config.list_mode == 'WHITE':
+                for filename in subset_config.filename_list:
+                    items.append(DataItem(filename, subset_config))
             else:
-                full_list = os.listdir(subset_config.non_makeup_image_dir)
+                full_list = os.listdir(subset_config.image_dir)
                 for filename in full_list:
-                    if filename not in subset_config.non_makeup_filename_list:
-                        self.non_makeup_items.append(DataItem(filename, subset_config))
-
+                    if filename not in subset_config.filename_list:
+                        items.append(DataItem(filename, subset_config))
 
 
         self.non_makeup_size = len(self.non_makeup_items)
@@ -138,16 +127,16 @@ class MakeupDataset(data.Dataset):
         non_makeup_item = self.non_makeup_items[non_makeup_index]
         makeup_item = self.makeup_items[makeup_index]
 
-        non_makeup_img = self.load_img(os.path.join(non_makeup_item.subset_config.non_makeup_image_dir, non_makeup_item.image_file_name),
+        non_makeup_img = self.load_img(os.path.join(non_makeup_item.subset_config.image_dir, non_makeup_item.image_file_name),
                                        non_makeup_angle)
-        makeup_img = self.load_img(os.path.join(makeup_item.subset_config.makeup_image_dir, makeup_item.image_file_name), makeup_angle)
+        makeup_img = self.load_img(os.path.join(makeup_item.subset_config.image_dir, makeup_item.image_file_name), makeup_angle)
 
         non_makeup_name = os.path.splitext(non_makeup_item.image_file_name)[0]
         makeup_name = os.path.splitext(makeup_item.image_file_name)[0]
 
         non_makeup_parse = self.load_parse(
-            os.path.join(non_makeup_item.subset_config.non_makeup_mask_dir, f'{non_makeup_name}.png'), non_makeup_angle)
-        makeup_parse = self.load_parse(os.path.join(makeup_item.subset_config.makeup_mask_dir, f'{makeup_name}.png'), makeup_angle)
+            os.path.join(non_makeup_item.subset_config.mask_dir, f'{non_makeup_name}.png'), non_makeup_angle)
+        makeup_parse = self.load_parse(os.path.join(makeup_item.subset_config.mask_dir, f'{makeup_name}.png'), makeup_angle)
 
         # load groundtrue
         transfer_img = None

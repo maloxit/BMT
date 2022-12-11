@@ -260,15 +260,15 @@ class GeneratorManager:
     def generate(self, non_makeup_item, makeup_item, mode='both'):
         non_makeup = self.dataset.load_from_file(
             non_makeup_item.image_file_name,
-            non_makeup_item.subset_config.non_makeup_image_dir,
-            non_makeup_item.subset_config.non_makeup_mask_dir,
-            non_makeup_item.subset_config.non_makeup_lms_dir
+            non_makeup_item.subset_config.image_dir,
+            non_makeup_item.subset_config.mask_dir,
+            non_makeup_item.subset_config.lms_dir
         )
         makeup = self.dataset.load_from_file(
             makeup_item.image_file_name,
-            makeup_item.subset_config.makeup_image_dir,
-            makeup_item.subset_config.makeup_mask_dir,
-            makeup_item.subset_config.makeup_lms_dir
+            makeup_item.subset_config.image_dir,
+            makeup_item.subset_config.mask_dir,
+            makeup_item.subset_config.lms_dir
         )
         non_makeup = self.generator.prepare_input(*non_makeup, need_batches=True)
         makeup = self.generator.prepare_input(*makeup, need_batches=True)
