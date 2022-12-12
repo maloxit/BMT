@@ -176,8 +176,7 @@ class WeightMaskGenerator(nn.Module):
         mask = torch.zeros_like(mask_parse[:, 0:1, :, :])
         for i in range(len(area_weights)):
             mask = mask + (mask_parse[:, i, :, :] * area_weights[i]).unsqueeze(1)
-        mask = torch.maximum(mask, w_mask_l * eye_shadows_weight)
-        mask = torch.maximum(mask, w_mask_r * eye_shadows_weight)
+        mask = mask + w_mask_l * eye_shadows_weight + w_mask_r * eye_shadows_weight
         mask = self.small_blur(mask)
         mask = self.batch_mean_normalization(mask)
         return mask
@@ -297,8 +296,10 @@ class SAATGLoss(nn.Module):
         loss_G_semantic = (loss_G_semantic_makeup + loss_G_semantic_non_makeup) * 0.5 * self.semantic_weight
 
         # makeup loss
-        area_weights = [0.05, 0.5, 1., 1., 1., 1., 1., 2., 1, 2., 0.2, 1., 1., 0.5]
-        eye_shadows_weight = 3.
+        # mask attribute: 0:background 1:face 2:left-eyebrow 3:right-eyebrow 4:left-eye 5: right-eye 6: nose
+        # 7: upper-lip 8: teeth 9: under-lip 10:hair 11: left-ear 12: right-ear 13: neck
+        area_weights = [0.05, 0.75, 1., 1., 1., 1., 1., 2., 1, 2., 0.2, 1., 1., 0.5]
+        eye_shadows_weight = 2.
         if weighted:
             non_makeup_weights = self.weight_mask_gen(non_makeup_parse, area_weights, eye_shadows_weight)
             makeup_weights = self.weight_mask_gen(makeup_parse, area_weights, eye_shadows_weight)
