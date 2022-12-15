@@ -54,6 +54,7 @@ def generate_metadata(subset_config_files, config, device):
 
     items: list[DataItem] = []
 
+    subset_config_files = sorted(subset_config_files)
     for subset_config_file in subset_config_files:
         subset_config: SubsetConfig = jsonpickle.decode(open(subset_config_file).read())
 
@@ -63,10 +64,11 @@ def generate_metadata(subset_config_files, config, device):
             os.makedirs(subset_config.lms_dir)
 
         if subset_config.list_mode == 'WHITE':
-            for filename in subset_config.filename_list:
+            full_list = sorted(subset_config.filename_list)
+            for filename in full_list:
                 items.append(DataItem(filename, subset_config))
         else:
-            full_list = os.listdir(subset_config.image_dir)
+            full_list = sorted(os.listdir(subset_config.image_dir))
             for filename in full_list:
                 if filename not in subset_config.filename_list:
                     items.append(DataItem(filename, subset_config))
@@ -112,6 +114,7 @@ class PGTGeneratorDataset(Dataset):
         self.makeup_items: list[DataItem] = []
         self.non_makeup_items: list[DataItem] = []
 
+        subset_config_files = sorted(subset_config_files)
         for subset_config_file in subset_config_files:
             subset_config: SubsetConfig = jsonpickle.decode(open(subset_config_file).read())
 
@@ -120,10 +123,11 @@ class PGTGeneratorDataset(Dataset):
             else:
                 items = self.non_makeup_items
             if subset_config.list_mode == 'WHITE':
-                for filename in subset_config.filename_list:
+                full_list = sorted(subset_config.filename_list)
+                for filename in full_list:
                     items.append(DataItem(filename, subset_config))
             else:
-                full_list = os.listdir(subset_config.image_dir)
+                full_list = sorted(os.listdir(subset_config.image_dir))
                 for filename in full_list:
                     if filename not in subset_config.filename_list:
                         items.append(DataItem(filename, subset_config))
