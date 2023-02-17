@@ -2,8 +2,6 @@
 # -*- encoding: utf-8 -*-
 import os.path as osp
 
-import numpy as np
-import cv2
 from PIL import Image
 import torch
 import torchvision.transforms as transforms
@@ -17,20 +15,21 @@ class FaceParser:
         self.device = device
         self.dic = torch.tensor(mapper, device=device).unsqueeze(1)
         save_pth = osp.split(osp.realpath(__file__))[0] + '/resnet.pth'
-
-        net = BiSeNet(n_classes=19)
-        net.load_state_dict(torch.load(save_pth, map_location=device))
-        self.net = net.to(device).eval()
-        self.to_tensor = transforms.Compose([
+        self.transform = transforms.Compose([
+            transforms.Resize(512),
+            transforms.CenterCrop(512),
             transforms.ToTensor(),
             transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
         ])
 
+        net = BiSeNet(n_classes=19)
+        net.load_state_dict(torch.load(save_pth, map_location=device))
+        self.net = net.to(device).eval()
+
 
     def parse(self, image: Image):
-        assert image.shape[:2] == (512, 512)
         with torch.no_grad():
-            image = self.to_tensor(image).to(self.device)
+            image = self.transform(image).to(self.device)
             image = torch.unsqueeze(image, 0)
             out = self.net(image)[0]
             parsing = out.squeeze(0).argmax(0)

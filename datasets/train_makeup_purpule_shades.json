@@ -1,0 +1,9 @@
+{
+    "py/object": "model.subset.SubsetConfig",
+    "data_type": "MAKEUP",
+    "lms_dir": "datasets/train/lms/makeup",
+    "mask_dir": "datasets/train/seg1/makeup",
+    "image_dir": "datasets/train/images/makeup/purpule_shades",
+    "list_mode": "BLACK",
+    "filename_list": []
+}

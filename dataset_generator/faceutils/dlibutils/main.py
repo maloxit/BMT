@@ -12,7 +12,7 @@ detector = dlib.get_frontal_face_detector()
 predictor = dlib.shape_predictor(osp.split(osp.realpath(__file__))[0] + '/shape_predictor_68_face_landmarks.dat')
 
 
-def detect(image: Image) -> 'faces':
+def detect(image: Image):
     image = np.asarray(image)
     h, w = image.shape[:2]
     image = resize_by_max(image, 361)
@@ -30,7 +30,7 @@ def detect(image: Image) -> 'faces':
         )
     return faces
 
-def crop(image: Image, face, up_ratio, down_ratio, width_ratio) -> (Image, 'face'):
+def crop(image: Image, face, up_ratio, down_ratio, width_ratio):
     width, height = image.size
     face_height = face.height()
     face_width = face.width()
@@ -81,7 +81,7 @@ def crop(image: Image, face, up_ratio, down_ratio, width_ratio) -> (Image, 'face
     return image, face, crop_face
 
 
-def crop_by_image_size(image: Image, face) -> (Image, 'face'):
+def crop_by_image_size(image: Image, face):
     center = face.center()
     width, height = image.size
     if width > height:
@@ -111,7 +111,7 @@ def landmarks(image: Image, face):
     shape = predictor(np.asarray(image), face).parts()
     return np.array([[p.y, p.x] for p in shape])
 
-def crop_from_array(image: np.array, face) -> (np.array, 'face'):
+def crop_from_array(image: np.array, face):
     ratio = 0.20 / 0.85 # delta_size / face_size
     height, width = image.shape[:2]
     face_height = face.height()
