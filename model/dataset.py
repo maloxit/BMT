@@ -15,11 +15,12 @@ from model.subset import SubsetConfig, DataItem
 class MakeupDataset(data.Dataset):
     """import dataset"""
 
-    def __init__(self, opts, device, subset_config_files, *, transform=True, need_pgt=True, all_comb=False):
+    def __init__(self, opts, device, subset_config_files, *, transform=True, need_pgt=True, all_comb=False, add_original_parsing=False):
         """init"""
         self.transform = transform
         self.need_pgt = need_pgt
         self.all_comb = all_comb
+        self.add_original_parsing = add_original_parsing
         self.opt = opts
         self.semantic_dim = opts.semantic_dim
 
@@ -74,13 +75,18 @@ class MakeupDataset(data.Dataset):
         img = self.rotate(img, angle)
         return img
 
-    def load_parse(self, parse, angle=0):
+    def load_parse(self, parse, angle=0, *, original=False):
         parse = cv2.imread(parse, cv2.IMREAD_GRAYSCALE)
         parse = self.rotate(parse, angle)
         h, w = parse.shape
         result = np.zeros([h, w, self.semantic_dim])
-        for i in range(self.semantic_dim):
-            result[:, :, i][np.where(parse == i)] = 1
+        mapping = [0, 1, 3, 2, 5, 4, 10, 12, 11, 13, 17, 8, 7, 14]
+        if original:
+            for i in range(self.semantic_dim):
+                result[:, :, mapping[i]][np.where(parse == i)] = 1
+        else:
+            for i in range(self.semantic_dim):
+                result[:, :, i][np.where(parse == i)] = 1
         result = np.array(result)
         return result
 
@@ -128,6 +134,11 @@ class MakeupDataset(data.Dataset):
             os.path.join(non_makeup_item.subset_config.mask_dir, f'{non_makeup_name}.png'), non_makeup_angle)
         makeup_parse = self.load_parse(os.path.join(makeup_item.subset_config.mask_dir, f'{makeup_name}.png'), makeup_angle)
 
+        if self.add_original_parsing:
+            non_makeup_parse_original = self.load_parse(
+                os.path.join(non_makeup_item.subset_config.mask_dir, f'{non_makeup_name}.png'), non_makeup_angle, original=True)
+            makeup_parse_original = self.load_parse(os.path.join(makeup_item.subset_config.mask_dir, f'{makeup_name}.png'), makeup_angle, original=True)
+
         # load groundtrue
         transfer_img = None
         removal_img = None
@@ -168,57 +179,70 @@ class MakeupDataset(data.Dataset):
                 self.generator.generate(non_makeup_item, makeup_item,
                                         mode='removal')
 
+
+
+        if self.add_original_parsing:
+            non_makeup_parse = [non_makeup_parse, non_makeup_parse_original]
+            makeup_parse = [makeup_parse, makeup_parse_original]
         # preprocessing
         non_makeup_img, makeup_img, non_makeup_parse, makeup_parse, transfer_img, removal_img = self.preprocessing(
             opts=self.opt, non_makeup_img=non_makeup_img, makeup_img=makeup_img,
             non_makeup_parse=non_makeup_parse, makeup_parse=makeup_parse, transfer_img=transfer_img,
             removal_img=removal_img)
 
-        non_makeup_img = np.transpose(non_makeup_img, (2, 0, 1)).astype(np.float32)
-        makeup_img = np.transpose(makeup_img, (2, 0, 1)).astype(np.float32)
-        non_makeup_parse = np.transpose(non_makeup_parse, (2, 0, 1)).astype(np.float32)
-        makeup_parse = np.transpose(makeup_parse, (2, 0, 1)).astype(np.float32)
-        non_makeup_parse = np.clip(non_makeup_parse, a_min=0, a_max=1).astype(np.float32)
-        makeup_parse = np.clip(makeup_parse, a_min=0, a_max=1).astype(np.float32)
+        for i in range(len(non_makeup_parse)):
+            non_makeup_parse[i] = np.transpose(non_makeup_parse[i], (2, 0, 1)).astype(np.float32)
+            non_makeup_parse[i] = np.clip(non_makeup_parse[i], a_min=0, a_max=1).astype(np.float32)
+        for i in range(len(makeup_parse)):
+            makeup_parse[i] = np.transpose(makeup_parse[i], (2, 0, 1)).astype(np.float32)
+            makeup_parse[i] = np.clip(makeup_parse[i], a_min=0, a_max=1).astype(np.float32)
 
         data = {
-            'non_makeup': non_makeup_img, 'makeup': makeup_img,
-            'non_makeup_parse': non_makeup_parse, 'makeup_parse': makeup_parse
+            'non_makeup': np.transpose(non_makeup_img, (2, 0, 1)).astype(np.float32),
+            'makeup': np.transpose(makeup_img, (2, 0, 1)).astype(np.float32),
+            'non_makeup_parse': non_makeup_parse[0],
+            'makeup_parse': makeup_parse[0]
         }
 
+        if self.add_original_parsing:
+            data['non_makeup_parse_original'] = non_makeup_parse[1]
+            data['makeup_parse_original'] = makeup_parse[1]
+
+
         if self.need_pgt:
-            transfer_img = np.transpose(transfer_img, (2, 0, 1)).astype(np.float32)
-            removal_img = np.transpose(removal_img, (2, 0, 1)).astype(np.float32)
-            data['transfer'] = transfer_img
-            data['removal'] = removal_img
+            data['transfer'] = np.transpose(transfer_img, (2, 0, 1)).astype(np.float32)
+            data['removal'] = np.transpose(removal_img, (2, 0, 1)).astype(np.float32)
 
         return data
 
     def __len__(self):
         return self.dataset_size
 
-    def preprocessing(self, opts, non_makeup_img, makeup_img, non_makeup_parse, makeup_parse,
+    def preprocessing(self, opts, non_makeup_img, makeup_img, non_makeup_parse: list, makeup_parse: list,
                       transfer_img=None, removal_img=None):
         if self.transform:
             if np.random.random() > 0.5:
                 non_makeup_img = cv2.resize(non_makeup_img, (opts.resize_size, opts.resize_size))
-                non_makeup_parse = cv2.resize(non_makeup_parse, (opts.resize_size, opts.resize_size),
-                                              interpolation=cv2.INTER_NEAREST)
+
                 h1 = int(np.ceil(np.random.uniform(1e-2, opts.resize_size - opts.crop_size)))
                 w1 = int(np.ceil(np.random.uniform(1e-2, opts.resize_size - opts.crop_size)))
                 non_makeup_img = non_makeup_img[h1:h1 + opts.crop_size, w1:w1 + opts.crop_size]
-                non_makeup_parse = non_makeup_parse[h1:h1 + opts.crop_size, w1:w1 + opts.crop_size]
+                for i in range(len(non_makeup_parse)):
+                    non_makeup_parse[i] = cv2.resize(non_makeup_parse[i], (opts.resize_size, opts.resize_size),
+                                                interpolation=cv2.INTER_NEAREST)
+                    non_makeup_parse[i] = non_makeup_parse[i][h1:h1 + opts.crop_size, w1:w1 + opts.crop_size]
                 if self.need_pgt:
                     transfer_img = cv2.resize(transfer_img, (opts.resize_size, opts.resize_size))
                     transfer_img = transfer_img[h1:h1 + opts.crop_size, w1:w1 + opts.crop_size]
             if np.random.random() > 0.5:
                 makeup_img = cv2.resize(makeup_img, (opts.resize_size, opts.resize_size))
-                makeup_parse = cv2.resize(makeup_parse, (opts.resize_size, opts.resize_size),
-                                          interpolation=cv2.INTER_NEAREST)
                 h1 = int(np.ceil(np.random.uniform(1e-2, opts.resize_size - opts.crop_size)))
                 w1 = int(np.ceil(np.random.uniform(1e-2, opts.resize_size - opts.crop_size)))
                 makeup_img = makeup_img[h1:h1 + opts.crop_size, w1:w1 + opts.crop_size]
-                makeup_parse = makeup_parse[h1:h1 + opts.crop_size, w1:w1 + opts.crop_size]
+                for i in range(len(makeup_parse)):
+                    makeup_parse[i] = cv2.resize(makeup_parse[i], (opts.resize_size, opts.resize_size),
+                                            interpolation=cv2.INTER_NEAREST)
+                    makeup_parse[i] = makeup_parse[i][h1:h1 + opts.crop_size, w1:w1 + opts.crop_size]
                 if self.need_pgt:
                     removal_img = cv2.resize(removal_img, (opts.resize_size, opts.resize_size))
                     removal_img = removal_img[h1:h1 + opts.crop_size, w1:w1 + opts.crop_size]
@@ -227,17 +251,21 @@ class MakeupDataset(data.Dataset):
                 if np.random.random() > 0.5:
                     non_makeup_img = np.fliplr(non_makeup_img)
                     makeup_img = np.fliplr(makeup_img)
-                    non_makeup_parse = np.fliplr(non_makeup_parse)
-                    makeup_parse = np.fliplr(makeup_parse)
+                    for i in range(len(non_makeup_parse)):
+                        non_makeup_parse[i] = np.fliplr(non_makeup_parse[i])
+                    for i in range(len(makeup_parse)):
+                        makeup_parse[i] = np.fliplr(makeup_parse[i])
                     if self.need_pgt:
                         transfer_img = np.fliplr(transfer_img)
                         removal_img = np.fliplr(removal_img)
 
         non_makeup_img = cv2.resize(non_makeup_img, (opts.crop_size, opts.crop_size))
         makeup_img = cv2.resize(makeup_img, (opts.crop_size, opts.crop_size))
-        non_makeup_parse = cv2.resize(non_makeup_parse, (opts.crop_size, opts.crop_size),
-                                      interpolation=cv2.INTER_NEAREST)
-        makeup_parse = cv2.resize(makeup_parse, (opts.crop_size, opts.crop_size), interpolation=cv2.INTER_NEAREST)
+        for i in range(len(non_makeup_parse)):
+            non_makeup_parse[i] = cv2.resize(non_makeup_parse[i], (opts.crop_size, opts.crop_size),
+                                        interpolation=cv2.INTER_NEAREST)
+        for i in range(len(makeup_parse)):
+            makeup_parse[i] = cv2.resize(makeup_parse[i], (opts.crop_size, opts.crop_size), interpolation=cv2.INTER_NEAREST)
         if self.need_pgt:
             transfer_img = cv2.resize(transfer_img, (opts.crop_size, opts.crop_size))
             removal_img = cv2.resize(removal_img, (opts.crop_size, opts.crop_size))
@@ -247,6 +275,4 @@ class MakeupDataset(data.Dataset):
         if self.need_pgt:
             transfer_img = transfer_img / 127.5 - 1.
             removal_img = removal_img / 127.5 - 1.
-        data = {'non_makeup': non_makeup_img, 'makeup': makeup_img, 'transfer': transfer_img, 'removal': removal_img,
-                'non_makeup_parse': non_makeup_parse, 'makeup_parse': makeup_parse}
         return non_makeup_img, makeup_img, non_makeup_parse, makeup_parse, transfer_img, removal_img
