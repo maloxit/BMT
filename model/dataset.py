@@ -80,7 +80,7 @@ class MakeupDataset(data.Dataset):
         parse = self.rotate(parse, angle)
         h, w = parse.shape
         result = np.zeros([h, w, self.semantic_dim])
-        mapping = [0, 1, 3, 2, 5, 4, 10, 12, 11, 13, 17, 8, 7, 14]
+        mapping = [0, 1, 3, 2, 5, 4, 10, 12, 11, 13, 17, 8, 7, 14, 6, 9, 15, 16]
         if original:
             for i in range(self.semantic_dim):
                 result[:, :, mapping[i]][np.where(parse == i)] = 1
