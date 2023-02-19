@@ -10,7 +10,7 @@ import torch.nn.functional as F
 
 
 class MakeupGAN(nn.Module):
-    def __init__(self, opts):
+    def __init__(self, opts, device):
         super(MakeupGAN, self).__init__()
         self.opts = opts
 
@@ -18,18 +18,18 @@ class MakeupGAN(nn.Module):
         self.lr = opts.lr
         self.batch_size = opts.batch_size
 
-        self.gpu = torch.device('cuda:{}'.format(opts.gpu)) if opts.gpu >= 0 else torch.device('cpu')
+        self.device = device
         self.input_dim = opts.input_dim
         self.output_dim = opts.output_dim
         self.semantic_dim = opts.semantic_dim
 
         # encoders
-        self.enc_content = init_net(networks.E_content(opts.input_dim), self.gpu, init_type='normal', gain=0.02)
-        self.enc_makeup = init_net(networks.E_makeup(opts.input_dim), self.gpu, init_type='normal', gain=0.02)
-        self.enc_semantic = init_net(networks.E_semantic(opts.semantic_dim), self.gpu, init_type='normal', gain=0.02)
-        self.transformer = init_net(networks.Transformer(), self.gpu, init_type='normal', gain=0.02)
+        self.enc_content = init_net(networks.E_content(opts.input_dim), self.device, init_type='normal', gain=0.02)
+        self.enc_makeup = init_net(networks.E_makeup(opts.input_dim), self.device, init_type='normal', gain=0.02)
+        self.enc_semantic = init_net(networks.E_semantic(opts.semantic_dim), self.device, init_type='normal', gain=0.02)
+        self.transformer = init_net(networks.Transformer(), self.device, init_type='normal', gain=0.02)
         # generator
-        self.gen = init_net(networks.Decoder(opts.output_dim), self.gpu, init_type='normal', gain=0.02)
+        self.gen = init_net(networks.Decoder(opts.output_dim), self.device, init_type='normal', gain=0.02)
 
 
     def get_transfers(self, non_makeup, makeup, non_makeup_parse, makeup_parse):
@@ -94,7 +94,7 @@ class MakeupGAN(nn.Module):
         return z_transfer, z_removal, z_rec_non_makeup, z_rec_makeup, z_cycle_non_makeup, z_cycle_makeup, mapX, mapY
 
     def resume(self, model_dir, train=True):
-        checkpoint = torch.load(model_dir, map_location=torch.device('cpu'))
+        checkpoint = torch.load(model_dir, map_location=self.device)
         # weight
         self.enc_content.load_state_dict(checkpoint['enc_c'])
         self.enc_makeup.load_state_dict(checkpoint['enc_a'])
