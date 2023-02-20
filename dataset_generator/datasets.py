@@ -290,6 +290,8 @@ def run():
     parser.add_argument("--skip-to-index", type=int, default=-1)
 
     parser.add_argument("--subset-config-files", nargs='+', default=[
+        'datasets/test_makeup.json',
+        'datasets/test_non_makeup.json',
         'datasets/train_makeup_blue_shades.json',
         'datasets/train_makeup_dark_shades.json',
         'datasets/train_makeup_new_makeup.json',
