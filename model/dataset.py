@@ -184,6 +184,9 @@ class MakeupDataset(data.Dataset):
         if self.add_original_parsing:
             non_makeup_parse = [non_makeup_parse, non_makeup_parse_original]
             makeup_parse = [makeup_parse, makeup_parse_original]
+        else:
+            non_makeup_parse = [non_makeup_parse]
+            makeup_parse = [makeup_parse]
         # preprocessing
         non_makeup_img, makeup_img, non_makeup_parse, makeup_parse, transfer_img, removal_img = self.preprocessing(
             opts=self.opt, non_makeup_img=non_makeup_img, makeup_img=makeup_img,
