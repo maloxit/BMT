@@ -252,11 +252,16 @@ class SAATGLoss(nn.Module):
         self.semantic_weight = opts.semantic_weight
         self.adv_weight = opts.adv_weight
 
+        # mask attribute: 0:background 1:face 2:left-eyebrow 3:right-eyebrow 4:left-eye 5: right-eye 6: nose
+        # 7: upper-lip 8: teeth 9: under-lip 10:hair 11: left-ear 12: right-ear 13: neck
+        self.area_weights = [0.05, 0.75, 1., 1., 1., 1., 1., 2., 1, 2., 0.2, 1., 1., 0.5]
+        self.eye_shadows_weight = 2.
+
         self.false = torch.BoolTensor([False])
         self.true = torch.BoolTensor([True])
 
     def forward(self, non_makeup, makeup, transfer, removal, non_makeup_parse, makeup_parse,
-                generator_output: tuple = None, weighted=False):
+                loss_hyperparams = None, generator_output: tuple = None):
         if generator_output is None:
             z_transfer, z_removal, z_rec_non_makeup, z_rec_makeup, z_cycle_non_makeup, z_cycle_makeup, mapX, mapY = \
                 self.gen(non_makeup, makeup, non_makeup_parse, makeup_parse)
@@ -267,17 +272,17 @@ class SAATGLoss(nn.Module):
         # Ladv for generator
         loss_G_GAN_non_makeup = self.adv_loss(self.dis_non_makeup(z_removal), self.true)
         loss_G_GAN_makeup = self.adv_loss(self.dis_makeup(z_transfer), self.true)
-        loss_G_GAN = (loss_G_GAN_non_makeup + loss_G_GAN_makeup) * 0.5 * self.adv_weight
+        loss_G_GAN = (loss_G_GAN_non_makeup + loss_G_GAN_makeup) * 0.5
 
         # rec loss
         loss_G_rec_non_makeup = self.criterionL1(non_makeup, z_rec_non_makeup)
         loss_G_rec_makeup = self.criterionL1(makeup, z_rec_makeup)
-        loss_G_rec = (loss_G_rec_non_makeup + loss_G_rec_makeup) * 0.5 * self.rec_weight
+        loss_G_rec = (loss_G_rec_non_makeup + loss_G_rec_makeup) * 0.5
 
         # cycle loss
         loss_G_cycle_non_makeup = self.criterionL1(non_makeup, z_cycle_non_makeup)
         loss_G_cycle_makeup = self.criterionL1(makeup, z_cycle_makeup)
-        loss_G_cycle = (loss_G_cycle_non_makeup + loss_G_cycle_makeup) * 0.5 * self.cycle_weight
+        loss_G_cycle = (loss_G_cycle_non_makeup + loss_G_cycle_makeup) * 0.5
 
         # semantic loss
         non_makeup_parse_down = F.interpolate(non_makeup_parse,
@@ -293,23 +298,32 @@ class SAATGLoss(nn.Module):
 
         loss_G_semantic_non_makeup = self.criterionL1(non_makeup_parse_down, makeup_parse_down_warp)
         loss_G_semantic_makeup = self.criterionL1(makeup_parse_down, non_makeup_parse_down_warp)
-        loss_G_semantic = (loss_G_semantic_makeup + loss_G_semantic_non_makeup) * 0.5 * self.semantic_weight
+        loss_G_semantic = (loss_G_semantic_makeup + loss_G_semantic_non_makeup) * 0.5
 
         # makeup loss
-        # mask attribute: 0:background 1:face 2:left-eyebrow 3:right-eyebrow 4:left-eye 5: right-eye 6: nose
-        # 7: upper-lip 8: teeth 9: under-lip 10:hair 11: left-ear 12: right-ear 13: neck
-        area_weights = [0.05, 0.75, 1., 1., 1., 1., 1., 2., 1, 2., 0.2, 1., 1., 0.5]
-        eye_shadows_weight = 2.
-        if weighted:
-            non_makeup_weights = self.weight_mask_gen(non_makeup_parse, area_weights, eye_shadows_weight)
-            makeup_weights = self.weight_mask_gen(makeup_parse, area_weights, eye_shadows_weight)
+        if loss_hyperparams is None:
+            non_makeup_weights = self.weight_mask_gen(non_makeup_parse, self.area_weights, self.eye_shadows_weight)
+            makeup_weights = self.weight_mask_gen(makeup_parse, self.area_weights, self.eye_shadows_weight)
         else:
-            non_makeup_weights = None
-            makeup_weights = None
+            non_makeup_weights = self.weight_mask_gen(non_makeup_parse, loss_hyperparams['area_weights'], loss_hyperparams['eye_shadows_weight'])
+            makeup_weights = self.weight_mask_gen(makeup_parse, loss_hyperparams['area_weights'], loss_hyperparams['eye_shadows_weight'])
 
         loss_G_CP = self.CPL(z_transfer, transfer, non_makeup_weights) + self.CPL(z_removal, removal, makeup_weights)
         loss_G_GP = self.GPL(z_transfer, non_makeup, non_makeup_weights) + self.GPL(z_removal, makeup, makeup_weights)
-        loss_G_SPL = loss_G_CP * self.CP_weight + loss_G_GP * self.GP_weight
+
+        if loss_hyperparams is None:
+            loss_G_GAN *= self.adv_weight
+            loss_G_rec *= self.rec_weight
+            loss_G_cycle *= self.cycle_weight
+            loss_G_semantic *= self.semantic_weight
+            loss_G_SPL = loss_G_CP * self.CP_weight + loss_G_GP * self.GP_weight
+        else:
+            loss_G_GAN *= loss_hyperparams['adv_weight']
+            loss_G_rec *= loss_hyperparams['rec_weight']
+            loss_G_cycle *= loss_hyperparams['cycle_weight']
+            loss_G_semantic *= loss_hyperparams['semantic_weight']
+            loss_G_SPL = loss_G_CP * loss_hyperparams['CP_weight'] + loss_G_GP * loss_hyperparams['GP_weight']
+
 
         loss_G = loss_G_GAN + loss_G_rec + loss_G_cycle + loss_G_semantic + loss_G_SPL
 
