@@ -23,27 +23,40 @@ class SPLoss(nn.Module):
         return -(a + b) / h
 
 
-class SPLossWeighted(nn.Module):
+class FSPLossWeighted(nn.Module):
     def __init__(self):
-        super(SPLossWeighted, self).__init__()
+        super(FSPLossWeighted, self).__init__()
 
+    # h == v == 2^k, k >=8
     def forward(self, input, reference, weights):
-        temp_a = torch.sum(
-            F.normalize(input, p=2.0, dim=2, eps=1e-4) * F.normalize(reference, p=2.0, dim=2, eps=1e-4) * weights,
-            2, keepdim=True)
-        temp_b = torch.sum(
-            F.normalize(input, p=2.0, dim=3, eps=1e-4) * F.normalize(reference, p=2.0, dim=3, eps=1e-4) * weights,
-            3, keepdim=True)
-        a = torch.sum(temp_a)
-        b = torch.sum(temp_b)
         B, c, h, w = input.shape
-        return -(a + b) / h
+        sum = 0.0
+        inputT = input.transpose(2,3).contiguous()
+        referenceT = reference.transpose(2,3).contiguous()
+        weightsT = weights.transpose(2,3).contiguous()
+        for k in range(0,6):
+            div = int(2**k)
+            i_hnorm = F.normalize(inputT.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
+            r_hnorm = F.normalize(referenceT.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
+            w_hsum = torch.sum(weightsT.view(B,1,-1,h//div), 3, keepdim=True) / h
+            ir_hnorm = i_hnorm * r_hnorm
+            spl_h = (1-torch.sum(ir_hnorm, 3, keepdim=True)) * w_hsum
+
+            i_vnorm = F.normalize(input.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
+            r_vnorm = F.normalize(reference.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
+            w_vsum = torch.sum(weights.view(B,1,-1,h//div), 3, keepdim=True) / h
+            ir_vnorm = i_vnorm * r_vnorm
+            spl_v = (1-torch.sum(ir_vnorm, 3, keepdim=True)) * w_vsum
+
+            sum += spl_h.sum() + spl_v.sum()
+
+        return sum / h
 
 
 class GPLoss(nn.Module):
     def __init__(self):
         super(GPLoss, self).__init__()
-        self._w_trace = SPLossWeighted()
+        self._w_trace = FSPLossWeighted()
         self._trace = SPLoss()
 
     def trace(self, input, reference, weights):
@@ -55,11 +68,11 @@ class GPLoss(nn.Module):
     def get_image_gradients(self, input):
         f_v_1 = input[:, :, :, :-1]
         f_v_2 = input[:, :, :, 1:]
-        f_v = f_v_1 - f_v_2
+        f_v = torch.cat((f_v_1 - f_v_2, torch.zeros_like(input[:,:,:,-1:])), 3)
 
         f_h_1 = input[:, :, :-1, :]
         f_h_2 = input[:, :, 1:, :]
-        f_h = f_h_1 - f_h_2
+        f_h = torch.cat((f_h_1 - f_h_2, torch.zeros_like(input[:,:,-1:,:])), 2)
 
         return f_v, f_h
 
@@ -75,8 +88,8 @@ class GPLoss(nn.Module):
             trace_v = self.trace(input_v, ref_v, weights)
             trace_h = self.trace(input_h, ref_h, weights)
         else:
-            trace_v = self.trace(input_v, ref_v, weights[:, :, :, :-1])
-            trace_h = self.trace(input_h, ref_h, weights[:, :, :-1, :])
+            trace_v = self.trace(input_v, ref_v, weights)
+            trace_h = self.trace(input_h, ref_h, weights)
         return trace_v + trace_h
 
 
@@ -86,7 +99,7 @@ class CPLoss(nn.Module):
         self.rgb = rgb
         self.yuv = yuv
         self.yuvgrad = yuvgrad
-        self._w_trace = SPLossWeighted()
+        self._w_trace = FSPLossWeighted()
         self._trace = SPLoss()
 
     def trace(self, input, reference, weights):
@@ -98,11 +111,11 @@ class CPLoss(nn.Module):
     def get_image_gradients(self, input):
         f_v_1 = input[:, :, :, :-1]
         f_v_2 = input[:, :, :, 1:]
-        f_v = f_v_1 - f_v_2
+        f_v = torch.cat((f_v_1 - f_v_2, torch.zeros_like(input[:,:,:,-1:])), 3)
 
         f_h_1 = input[:, :, :-1, :]
         f_h_2 = input[:, :, 1:, :]
-        f_h = f_h_1 - f_h_2
+        f_h = torch.cat((f_h_1 - f_h_2, torch.zeros_like(input[:,:,-1:,:])), 2)
 
         return f_v, f_h
 
@@ -139,8 +152,8 @@ class CPLoss(nn.Module):
                 total_loss += self.trace(input_v, ref_v, weights)
                 total_loss += self.trace(input_h, ref_h, weights)
             else:
-                total_loss += self.trace(input_v, ref_v, weights[:, :, :, :-1])
-                total_loss += self.trace(input_h, ref_h, weights[:, :, :-1, :])
+                total_loss += self.trace(input_v, ref_v, weights)
+                total_loss += self.trace(input_h, ref_h, weights)
 
         return total_loss
 
