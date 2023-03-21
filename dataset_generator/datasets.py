@@ -190,7 +190,7 @@ class PGTGeneratorDataset(Dataset):
         return data
 
     def __len__(self):
-        return len(self.n_img_names) * len(self.m_img_names)
+        return len(self.non_makeup_items) * len(self.makeup_items)
 
 
 class GeneratorManager:
