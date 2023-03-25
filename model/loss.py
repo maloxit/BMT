@@ -27,14 +27,15 @@ class FSPLossWeighted(nn.Module):
     def __init__(self):
         super(FSPLossWeighted, self).__init__()
 
-    # h == v == 2^k, k >=8
-    def forward(self, input, reference, weights):
+    # h == v == 2^m
+    def forward(self, input, reference, weights, depth):
         B, c, h, w = input.shape
-        sum = 0.0
+        loss = 0.0
+        max_loss = 0.0
         inputT = input.transpose(2,3).contiguous()
         referenceT = reference.transpose(2,3).contiguous()
         weightsT = weights.transpose(2,3).contiguous()
-        for k in range(0,6):
+        for k in range(0,depth):
             div = int(2**k)
             i_hnorm = F.normalize(inputT.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
             r_hnorm = F.normalize(referenceT.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
@@ -48,9 +49,50 @@ class FSPLossWeighted(nn.Module):
             ir_vnorm = i_vnorm * r_vnorm
             spl_v = (1-torch.sum(ir_vnorm, 3, keepdim=True)) * w_vsum
 
-            sum += spl_h.sum() + spl_v.sum()
+            loss += (spl_h.sum() + spl_v.sum()) / (c * h * 2) / div
+            max_loss += 1 / div
+        return loss / max_loss
+    
+    def get_loss_map(self, input, reference, weights, depth):
+        B, c, h, w = input.shape
+        loss_map_sum = torch.zeros_like(input)
+        loss = 0.0
+        max_loss = 0.0
+        inputT = input.transpose(2,3).contiguous()
+        referenceT = reference.transpose(2,3).contiguous()
+        weightsT = weights.transpose(2,3).contiguous()
+        for k in range(0,depth):
+            loss_map = torch.zeros_like(input)
+            div = int(2**k)
+            i_hnorm = F.normalize(inputT.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
+            r_hnorm = F.normalize(referenceT.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
+            w_hsum = torch.sum(weightsT.view(B,1,-1,h//div), 3, keepdim=True) / h
+            ir_hnorm = i_hnorm * r_hnorm
+            spl_h = (1-torch.sum(ir_hnorm, 3, keepdim=True)) * w_hsum
 
-        return sum / h
+            i_vnorm = F.normalize(input.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
+            r_vnorm = F.normalize(reference.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
+            w_vsum = torch.sum(weights.view(B,1,-1,h//div), 3, keepdim=True) / h
+            ir_vnorm = i_vnorm * r_vnorm
+            spl_v = (1-torch.sum(ir_vnorm, 3, keepdim=True)) * w_vsum
+
+            h_grid = spl_h.view(B,c,-1,div).transpose(2,3).contiguous()
+            h_grid = torch.sum(h_grid.view(B,c,-1,h//div), 3, keepdim=True).view(B,c,div,div) / h
+            v_grid = spl_v.view(B,c,-1,div).transpose(2,3).contiguous()
+            v_grid = torch.sum(v_grid.view(B,c,-1,h//div), 3, keepdim=True).view(B,c,div,div) / h
+
+            for i in range(0, div):
+                for j in range(0, div):
+                    x_min = h//div * i
+                    x_max = h//div * (i+1)
+                    y_min = h//div * j
+                    y_max = h//div * (j+1)
+                    loss_map[:,:,x_min:x_max,y_min:y_max] = (h_grid[:,:,i,j].view(1,3,1,1) + v_grid[:,:,j,i].view(1,3,1,1)) / (2 * (h//div) * (h//div))
+            loss_map_sum += loss_map / div
+            loss += (spl_h.sum() + spl_v.sum()) / (c * h * 2) / div
+            max_loss += 1 / div
+        return loss / max_loss, loss_map_sum / max_loss
+
 
 
 class GPLoss(nn.Module):
@@ -63,7 +105,7 @@ class GPLoss(nn.Module):
         if weights is None:
             return self._trace(input, reference)
         else:
-            return self._w_trace(input, reference, weights)
+            return self._w_trace(input, reference, weights, depth=6)
 
     def get_image_gradients(self, input):
         f_v_1 = input[:, :, :, :-1]
@@ -83,14 +125,9 @@ class GPLoss(nn.Module):
 
         input_v, input_h = self.get_image_gradients(input)
         ref_v, ref_h = self.get_image_gradients(reference)
-
-        if weights is None:
-            trace_v = self.trace(input_v, ref_v, weights)
-            trace_h = self.trace(input_h, ref_h, weights)
-        else:
-            trace_v = self.trace(input_v, ref_v, weights)
-            trace_h = self.trace(input_h, ref_h, weights)
-        return trace_v + trace_h
+        trace_v = self.trace(input_v, ref_v, weights)
+        trace_h = self.trace(input_h, ref_h, weights)
+        return (trace_v + trace_h) / 2
 
 
 class CPLoss(nn.Module):
@@ -106,7 +143,7 @@ class CPLoss(nn.Module):
         if weights is None:
             return self._trace(input, reference)
         else:
-            return self._w_trace(input, reference, weights)
+            return self._w_trace(input, reference, weights, depth=6)
 
     def get_image_gradients(self, input):
         f_v_1 = input[:, :, :, :-1]
@@ -136,26 +173,27 @@ class CPLoss(nn.Module):
         ## comment these lines when you inputs and outputs are in [0,1] range already
         input = (input + 1) / 2
         reference = (reference + 1) / 2
+
+        max_loss = 0
         total_loss = 0
         if self.rgb:
+            max_loss += 1
             total_loss += self.trace(input, reference, weights)
         if self.yuv:
+            max_loss += 1
             input_yuv = self.to_YUV(input)
             reference_yuv = self.to_YUV(reference)
             total_loss += self.trace(input_yuv, reference_yuv, weights)
         if self.yuvgrad:
+            max_loss += 2
             input_yuv = self.to_YUV(input)
             reference_yuv = self.to_YUV(reference)
             input_v, input_h = self.get_image_gradients(input_yuv)
             ref_v, ref_h = self.get_image_gradients(reference_yuv)
-            if weights is None:
-                total_loss += self.trace(input_v, ref_v, weights)
-                total_loss += self.trace(input_h, ref_h, weights)
-            else:
-                total_loss += self.trace(input_v, ref_v, weights)
-                total_loss += self.trace(input_h, ref_h, weights)
+            total_loss += self.trace(input_v, ref_v, weights)
+            total_loss += self.trace(input_h, ref_h, weights)
 
-        return total_loss
+        return total_loss / max_loss
 
 
 class WeightMaskGenerator(nn.Module):
