@@ -283,13 +283,17 @@ class GeneratorManager:
 def run():
     parser = argparse.ArgumentParser("argument for training")
     parser.add_argument("--name", type=str, default='demo')
-    parser.add_argument("--warp-dir", type=str, default='datasets/train/images/wrap_tmp', help="path to warp results")
-    parser.add_argument("--warp-alt-dir", type=str, default='datasets/train/images/wrap', help="path to warp results")
-    parser.add_argument("--warp-storage-dir", type=str, default='datasets/train/images/wrap_storage')
+    parser.add_argument("--warp-dir", type=str, default='datasets/test/images/wrap_tmp', help="path to warp results")
+    parser.add_argument("--warp-alt-dir", type=str, default='datasets/test/images/wrap', help="path to warp results")
+    parser.add_argument("--warp-storage-dir", type=str, default='datasets/test/images/wrap_storage')
     parser.add_argument("--storage-every", type=int, default=600)
     parser.add_argument("--skip-to-index", type=int, default=-1)
 
     parser.add_argument("--subset-config-files", nargs='+', default=[
+        'datasets/paper_makeup.json',
+        'datasets/paper_non_makeup.json',
+        ])
+    """
         'datasets/test_makeup.json',
         'datasets/test_non_makeup.json',
         'datasets/train_makeup_blue_shades.json',
@@ -303,6 +307,7 @@ def run():
         'datasets/train_makeup_weak3.json',
         'datasets/train_non_makeup.json'
         ])
+    """
     parser.add_argument("--gpu", default='0', type=str, help="GPU id to use.")
     parser.add_argument("--skip-metadata", action='store_true', help="Do not generate metadata.")
     parser.add_argument("--metadata-only", action='store_true', help="Only generate metadata.")
