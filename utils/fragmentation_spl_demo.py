@@ -85,17 +85,15 @@ def batch_max_normalization(input):
     tmp = tmp / tmp.max(1, keepdim=True)[0]
     return tmp.view(input.shape)
 
-area_weights = [0.05, 0.75, 1., 1., 1., 1., 1., 2., 1, 2., 0.2, 1., 1., 0.5]
+area_weights = [0.05, 0.75, 1., 1., 1.5, 1.5, 1., 2., 1, 2., 0.2, 1., 1., 0.5]
 eye_shadows_weight = 2.
 
 def show_mask(data2d):
     fig, ax = plt.subplots()
     #im = ax.imshow(data2d, cmap='plasma', vmin=-0.03, vmax=0.01)
     im = ax.imshow(data2d, cmap='plasma')
-    ax.set_title('Pan on the colorbar to shift the color mapping\n'
-                'Zoom on the colorbar to scale the color mapping')
 
-    fig.colorbar(im, ax=ax, label='Interactive colorbar')
+    fig.colorbar(im, ax=ax)
 
 
 def forward(input, reference, weights):
@@ -107,56 +105,67 @@ def forward(input, reference, weights):
     weightsT = weights.transpose(2,3).contiguous()
     for k in range(0,6):
         div = int(2**k)
-        i_hnorm = F.normalize(inputT.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
-        r_hnorm = F.normalize(referenceT.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
-        w_hsum = torch.sum(weightsT.view(B,1,-1,h//div), 3, keepdim=True) / h
-        ir_hnorm = i_hnorm * r_hnorm
-        spl_h = (1-torch.sum(ir_hnorm, 3, keepdim=True)) * w_hsum
 
-        i_vnorm = F.normalize(input.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
-        r_vnorm = F.normalize(reference.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
-        w_vsum = torch.sum(weights.view(B,1,-1,h//div), 3, keepdim=True) / h
-        ir_vnorm = i_vnorm * r_vnorm
-        spl_v = (1-torch.sum(ir_vnorm, 3, keepdim=True)) * w_vsum
+        i_h = input.view(B,c,-1,h//div)
+        r_h = reference.view(B,c,-1,h//div)
+        ir_hnorm = i_h.norm(p=2.0, dim=3, keepdim=True) * r_h.norm(p=2.0, dim=3, keepdim=True)
+        ir_hnorm[ir_hnorm<1e-8] = 1.
+        w_hsum = torch.sum(weights.view(B,1,-1,h//div), 3, keepdim=True) / h
+        ir_hcos = i_h * r_h / ir_hnorm
+        spl_h = (1-torch.sum(ir_hcos, 3, keepdim=True)) * w_hsum
+        
+        i_v = inputT.view(B,c,-1,h//div)
+        r_v = referenceT.view(B,c,-1,h//div)
+        ir_vnorm = i_v.norm(p=2.0, dim=3, keepdim=True) * r_v.norm(p=2.0, dim=3, keepdim=True)
+        ir_vnorm[ir_vnorm<1e-8] = 1.
+        w_vsum = torch.sum(weightsT.view(B,1,-1,h//div), 3, keepdim=True) / h
+        ir_vcos = i_v * r_v / ir_vnorm
+        spl_v = (1-torch.sum(ir_vcos, 3, keepdim=True)) * w_vsum
 
         loss += (spl_h.sum() + spl_v.sum()) / (c * h * 2) / div
         max_loss += 1 / div
     return loss / max_loss
 
 
-def get_loss_map(input, reference, weights):
+def get_loss_map(input, reference, weights, depth=6):
     B, c, h, w = input.shape
+    loss_maps = []
     loss_map_sum = torch.zeros_like(input)
     sum = 0.0
     max_sum = 0.0
     inputT = input.transpose(2,3).contiguous()
     referenceT = reference.transpose(2,3).contiguous()
     weightsT = weights.transpose(2,3).contiguous()
-    for k in range(0,6):
+    for k in range(0,depth):
         loss_map = torch.zeros_like(input)
         div = int(2**k)
-        i_hnorm = F.normalize(inputT.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
-        r_hnorm = F.normalize(referenceT.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
-        w_hsum = torch.sum(weightsT.view(B,1,-1,h//div), 3, keepdim=True) / h
-        ir_hnorm = i_hnorm * r_hnorm
-        spl_h = (1/(h//div)-ir_hnorm) * w_hsum
 
-        i_vnorm = F.normalize(input.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
-        r_vnorm = F.normalize(reference.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
-        w_vsum = torch.sum(weights.view(B,1,-1,h//div), 3, keepdim=True) / h
-        ir_vnorm = i_vnorm * r_vnorm
-        spl_v = (1/(h//div)-ir_vnorm) * w_vsum
+        i_h = input.view(B,c,-1,h//div)
+        r_h = reference.view(B,c,-1,h//div)
+        ir_hnorm = i_h.norm(p=2.0, dim=3, keepdim=True) * r_h.norm(p=2.0, dim=3, keepdim=True)
+        ir_hnorm = torch.where(ir_hnorm<1e-8, 1.0, ir_hnorm)
+        w_hsum = torch.sum(weights.view(B,1,-1,h//div), 3, keepdim=True) / h
+        ir_hcos = i_h * r_h / ir_hnorm
+        spl_h = (1/(h//div)-ir_hcos) * w_hsum
+        
+        i_v = inputT.view(B,c,-1,h//div)
+        r_v = referenceT.view(B,c,-1,h//div)
+        ir_vnorm = i_v.norm(p=2.0, dim=3, keepdim=True) * r_v.norm(p=2.0, dim=3, keepdim=True)
+        ir_vnorm = torch.where(ir_vnorm<1e-8, 1.0, ir_vnorm)
+        w_vsum = torch.sum(weightsT.view(B,1,-1,h//div), 3, keepdim=True) / h
+        ir_vcos = i_v * r_v / ir_vnorm
+        spl_v = (1/(h//div)-ir_vcos) * w_vsum
 
-        show_mask((spl_h.view(B,c,h,h).transpose(2,3) + spl_v.view(B,c,h,h))[0].sum(0).cpu())
+        #show_mask((spl_h.view(B,c,h,h).transpose(2,3) + spl_v.view(B,c,h,h))[0].sum(0).cpu())
 
 
         spl_h = spl_h.sum(3, keepdim=True)
         spl_v = spl_v.sum(3, keepdim=True)
 
 
-        h_grid = spl_h.view(B,c,-1,div).transpose(2,3).contiguous()
+        h_grid = spl_h.view(B,c,-1,div)
         #h_grid = torch.sum(h_grid.view(B,c,-1,h//div), 3, keepdim=True).view(B,c,div,div) / h
-        v_grid = spl_v.view(B,c,-1,div)
+        v_grid = spl_v.view(B,c,-1,div).transpose(2,3)
         #v_grid = torch.sum(v_grid.view(B,c,-1,h//div), 3, keepdim=True).view(B,c,div,div) / h
 
         for i in range(0, div):
@@ -165,13 +174,16 @@ def get_loss_map(input, reference, weights):
                 x_max = h//div * (i+1)
                 y_min = h//div * j
                 y_max = h//div * (j+1)
-                loss_map[:,:,x_min:x_max,y_min:y_max] = (h_grid[:,:,i:i+1,y_min:y_max].expand(B,c,h//div,h//div) + v_grid[:,:,x_min:x_max,j:j+1].expand(B,c,h//div,h//div)) / (2 * (h) * (h//div))
+                loss_map[:,:,x_min:x_max,y_min:y_max] = (h_grid[:,:,x_min:x_max,j:j+1].expand(B,c,h//div,h//div) + v_grid[:,:,i:i+1,y_min:y_max].expand(B,c,h//div,h//div)) / (2 * (h) * (h//div))
                 #loss_map[:,:,x_min:x_max,y_min:y_max] = (h_grid[:,:,i:i+1,y_min:y_max].sum(3, keepdim=True) + v_grid[:,:,x_min:x_max,j:j+1].sum(2, keepdim=True)) / (2 * (h) * (h//div) * (h//div))
         loss_map_sum += loss_map / div
-        show_mask(loss_map[0].sum(0).cpu())
+        loss_maps.append(loss_map)
         sum += (spl_h.sum() + spl_v.sum()) / (c * h * 2) / div
         max_sum += 1 / div
-    return sum / max_sum, loss_map_sum / max_sum
+        #show_mask(loss_map[0].sum(0).cpu())
+        #plt.show()
+    
+    return sum / max_sum, loss_map_sum / max_sum, loss_maps
 
 
 with torch.no_grad():
@@ -183,46 +195,108 @@ with torch.no_grad():
         non_makeup_parse = data['non_makeup_parse'].to(device)
         makeup_parse = data['makeup_parse'].to(device)
 
-        weights1 = weightGen.forward(non_makeup_parse, area_weights, eye_shadows_weight)
-
-        show_mask(weights1[0,0].cpu())
-
-        weights2 = weightGen.forward(makeup_parse, area_weights, eye_shadows_weight)
-
-        show_mask(weights2[0,0].cpu())
-
-        plt.show()
-
         non_makeup = ((non_makeup + 1)/2)
         makeup = ((makeup + 1)/2)
         transfer_g = ((transfer_g + 1)/2)
         removal_g = ((removal_g + 1)/2)
 
-        show_mask((non_makeup - transfer_g).abs().sum(1)[0].cpu())
-        show_mask(((non_makeup - transfer_g)*weights1).abs().sum(1)[0].cpu())
+        fig, ax = plt.subplots(1, 2, gridspec_kw={'wspace':0.0,'hspace':0.0})
+        for axis in ax:
+            axis.set_axis_off()
 
-        plt.show()
+        weights1 = weightGen.forward(non_makeup_parse, area_weights, eye_shadows_weight)
+        weights2 = weightGen.forward(makeup_parse, area_weights, eye_shadows_weight)
 
-        loss, loss_map = get_loss_map(non_makeup, transfer_g, weights1)
-        print(forward(non_makeup, transfer_g, weights1))
+        im = ax[0].imshow(weights1[0,0].cpu(), cmap='plasma', vmin=0, vmax=5)
+        im = ax[1].imshow(weights2[0,0].cpu(), cmap='plasma', vmin=0, vmax=5)
+        
+        fig.colorbar(im, ax=ax)
+
+        fig, ax = plt.subplots(2, 4, gridspec_kw={'wspace':0.0,'hspace':0.1})
+        for axis_row in ax:
+            for axis in axis_row:
+                axis.set_axis_off()
+        im = ax[0,0].imshow(non_makeup[0].cpu().permute(1,2,0))
+        im = ax[1,0].imshow(transfer_g[0].cpu().permute(1,2,0))
+        im = ax[0,1].imshow(weights1[0,0].cpu(), cmap='plasma', vmin=0, vmax=5)
+        fig.colorbar(im, ax=ax[0,:2])
+
+        im = ax[0,2].imshow(((non_makeup - transfer_g)/256/256).abs().sum(1)[0].cpu(), cmap='plasma', vmin=0, vmax=1e-4)
+        im = ax[0,3].imshow(((non_makeup - transfer_g)*weights1/256/256).abs().sum(1)[0].cpu(), cmap='plasma', vmin=0, vmax=1e-4)
+        
+        fig.colorbar(im, ax=ax[0,2:])
+
+
+        loss, loss_map_1, _ = get_loss_map(non_makeup, transfer_g, torch.ones_like(weights1), 1)
         print(loss)
-        print(loss_map.sum() / 3)
-        show_mask(loss_map[0].sum(0).cpu())
+        print(loss_map_1.sum() / 3)
+        loss, loss_map_2, _ = get_loss_map(non_makeup, transfer_g, weights1, 1)
+        print(loss)
+        print(loss_map_2.sum() / 3)
+
+
+        im = ax[1,2].imshow(loss_map_1[0].sum(0).cpu(), cmap='plasma', vmin=0, vmax=3e-6)
+        im = ax[1,3].imshow(loss_map_2[0].sum(0).cpu(), cmap='plasma', vmin=0, vmax=3e-6)
+
+        fig.colorbar(im, ax=ax[1,2:])
+        
+
+        loss, loss_map_1, _ = get_loss_map(torch.zeros_like(non_makeup), non_makeup, weights1, 1)
+        loss, loss_map_2, _ = get_loss_map(torch.zeros_like(non_makeup), non_makeup, weights2, 1)
+
+        im = ax[1,1].imshow((loss_map_1[0].sum(0) * 256 * 256 / 3).cpu(), cmap='plasma', vmin=0, vmax=2.2)
+        fig.colorbar(im, ax=ax[1,:2])
+        
+        fig, ax = plt.subplots(1, 2, gridspec_kw={'wspace':0.0,'hspace':0.0})
+        for axis in ax:
+            axis.set_axis_off()
+
+        im = ax[0].imshow((loss_map_1[0].sum(0) * 256 * 256 / 3).cpu(), cmap='plasma', vmin=0, vmax=2.2)
+        im = ax[1].imshow((loss_map_2[0].sum(0) * 256 * 256 / 3).cpu(), cmap='plasma', vmin=0, vmax=2.2)
+        fig.colorbar(im, ax=ax[:2])
         plt.show()
 
-        loss, loss_map = get_loss_map(makeup, removal_g, weights2)
-        print(forward(makeup, removal_g, weights2))
-        print(loss)
-        print(loss_map.sum() / 3)
-        show_mask(loss_map[0].sum(0).cpu())
+        print((loss_map_1[0].sum() / 3).cpu())
+        print((loss_map_2[0].sum() / 3).cpu())
+
+
+
+        
+        fig, ax = plt.subplots(3, 7, gridspec_kw={'wspace':0.0,'hspace':0.05})
+        for axis_row in ax:
+            for axis in axis_row:
+                axis.set_axis_off()
+
+        im = ax[0,0].imshow(weights1[0,0].cpu(), cmap='plasma', vmin=0, vmax=5)
+        im = ax[1,0].imshow(non_makeup[0].cpu().permute(1,2,0))
+        im = ax[2,0].imshow(transfer_g[0].cpu().permute(1,2,0))
+
+        loss, loss_map_1, loss_maps = get_loss_map(torch.zeros_like(non_makeup), transfer_g, weights1, 5)
+        print((loss_map_1[0].sum() / 3).cpu())
+        print(loss.cpu())
+        im = ax[0,6].imshow((loss_map_1[0].sum(0) * 256 * 256 / 3).cpu(), cmap='plasma')
+        fig.colorbar(im, ax=ax[0,-1])
+        for k, loss_map in enumerate(loss_maps):
+            im = ax[0,k+1].imshow((loss_map[0].sum(0) * 256 * 256 / 3).cpu(), cmap='plasma')
+        
+        loss, loss_map_1, loss_maps = get_loss_map(non_makeup, transfer_g, torch.ones_like(weights1), 5)
+        print((loss_map_1[0].sum() / 3).cpu())
+        print(loss.cpu())
+        im = ax[1,6].imshow((loss_map_1[0].sum(0) * 256 * 256 / 3).cpu(), cmap='plasma', vmin=0, vmax=0.09)
+        fig.colorbar(im, ax=ax[1,-1])
+        for k, loss_map in enumerate(loss_maps):
+            im = ax[1,k+1].imshow((loss_map[0].sum(0) * 256 * 256 / 3).cpu(), cmap='plasma')
+        
+        loss, loss_map_1, loss_maps = get_loss_map(non_makeup, transfer_g, weights1, 5)
+        print((loss_map_1[0].sum() / 3).cpu())
+        print(loss.cpu())
+        im = ax[2,6].imshow((loss_map_1[0].sum(0) * 256 * 256 / 3).cpu(), cmap='plasma', vmin=0, vmax=0.09)
+        fig.colorbar(im, ax=ax[2,-1])
+        for k, loss_map in enumerate(loss_maps):
+            im = ax[2,k+1].imshow((loss_map[0].sum(0) * 256 * 256 / 3).cpu(), cmap='plasma')
         plt.show()
 
-        loss, loss_map = get_loss_map(torch.zeros_like(non_makeup), non_makeup, weights1)
-        print(forward(torch.zeros_like(non_makeup), non_makeup, weights1))
-        print(loss)
-        print(loss_map.sum() / 3)
-        show_mask(loss_map[0].sum(0).cpu())
-        plt.show()
+
 
 
         

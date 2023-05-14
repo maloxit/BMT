@@ -37,17 +37,21 @@ class FSPLossWeighted(nn.Module):
         weightsT = weights.transpose(2,3).contiguous()
         for k in range(0,depth):
             div = int(2**k)
-            i_hnorm = F.normalize(inputT.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
-            r_hnorm = F.normalize(referenceT.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
-            w_hsum = torch.sum(weightsT.view(B,1,-1,h//div), 3, keepdim=True) / h
-            ir_hnorm = i_hnorm * r_hnorm
-            spl_h = (1-torch.sum(ir_hnorm, 3, keepdim=True)) * w_hsum
+            i_h = input.view(B,c,-1,h//div)
+            r_h = reference.view(B,c,-1,h//div)
+            ir_hnorm = i_h.norm(p=2.0, dim=3, keepdim=True) * r_h.norm(p=2.0, dim=3, keepdim=True)
+            ir_hnorm[ir_hnorm<1e-8] = 1.
+            w_hsum = torch.sum(weights.view(B,1,-1,h//div), 3, keepdim=True) / h
+            ir_hcos = i_h * r_h / ir_hnorm
+            spl_h = (1-torch.sum(ir_hcos, 3, keepdim=True)) * w_hsum
 
-            i_vnorm = F.normalize(input.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
-            r_vnorm = F.normalize(reference.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
-            w_vsum = torch.sum(weights.view(B,1,-1,h//div), 3, keepdim=True) / h
-            ir_vnorm = i_vnorm * r_vnorm
-            spl_v = (1-torch.sum(ir_vnorm, 3, keepdim=True)) * w_vsum
+            i_v = inputT.view(B,c,-1,h//div)
+            r_v = referenceT.view(B,c,-1,h//div)
+            ir_vnorm = i_v.norm(p=2.0, dim=3, keepdim=True) * r_v.norm(p=2.0, dim=3, keepdim=True)
+            ir_vnorm[ir_vnorm<1e-8] = 1.
+            w_vsum = torch.sum(weightsT.view(B,1,-1,h//div), 3, keepdim=True) / h
+            ir_vcos = i_v * r_v / ir_vnorm
+            spl_v = (1-torch.sum(ir_vcos, 3, keepdim=True)) * w_vsum
 
             loss += (spl_h.sum() + spl_v.sum()) / (c * h * 2) / div
             max_loss += 1 / div
@@ -64,15 +68,15 @@ class FSPLossWeighted(nn.Module):
         for k in range(0,depth):
             loss_map = torch.zeros_like(input)
             div = int(2**k)
-            i_hnorm = F.normalize(inputT.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
-            r_hnorm = F.normalize(referenceT.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
-            w_hsum = torch.sum(weightsT.view(B,1,-1,h//div), 3, keepdim=True) / h
+            i_hnorm = F.normalize(input.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
+            r_hnorm = F.normalize(reference.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
+            w_hsum = torch.sum(weights.view(B,1,-1,h//div), 3, keepdim=True) / h
             ir_hnorm = i_hnorm * r_hnorm
             spl_h = (1-torch.sum(ir_hnorm, 3, keepdim=True)) * w_hsum
 
-            i_vnorm = F.normalize(input.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
-            r_vnorm = F.normalize(reference.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
-            w_vsum = torch.sum(weights.view(B,1,-1,h//div), 3, keepdim=True) / h
+            i_vnorm = F.normalize(inputT.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
+            r_vnorm = F.normalize(referenceT.view(B,c,-1,h//div), p=2.0, dim=3, eps=1e-4)
+            w_vsum = torch.sum(weightsT.view(B,1,-1,h//div), 3, keepdim=True) / h
             ir_vnorm = i_vnorm * r_vnorm
             spl_v = (1-torch.sum(ir_vnorm, 3, keepdim=True)) * w_vsum
 
@@ -87,7 +91,7 @@ class FSPLossWeighted(nn.Module):
                     x_max = h//div * (i+1)
                     y_min = h//div * j
                     y_max = h//div * (j+1)
-                    loss_map[:,:,x_min:x_max,y_min:y_max] = (h_grid[:,:,i,j].view(1,3,1,1) + v_grid[:,:,j,i].view(1,3,1,1)) / (2 * (h//div) * (h//div))
+                    loss_map[:,:,x_min:x_max,y_min:y_max] = (h_grid[:,:,j,i].view(1,3,1,1) + v_grid[:,:,i,j].view(1,3,1,1)) / (2 * (h//div) * (h//div))
             loss_map_sum += loss_map / div
             loss += (spl_h.sum() + spl_v.sum()) / (c * h * 2) / div
             max_loss += 1 / div
@@ -199,7 +203,8 @@ class CPLoss(nn.Module):
 class WeightMaskGenerator(nn.Module):
     def __init__(self):
         super(WeightMaskGenerator, self).__init__()
-        self.big_blur = vT.GaussianBlur(51, 15.)
+        self.big_blur = vT.GaussianBlur(101, 20.)
+        self.medium_blur = vT.GaussianBlur(51, 10.)
         self.small_blur = vT.GaussianBlur(21, 2.)
 
     def batch_max_normalization(self, input):
@@ -214,20 +219,17 @@ class WeightMaskGenerator(nn.Module):
 
     def forward(self, mask_parse, area_weights, eye_shadows_weight):
         background_mask = mask_parse[:, 0, :, :].unsqueeze(1)
-        eyes_mask_l = mask_parse[:, 4, :, :].unsqueeze(1)
-        w_mask_l = self.big_blur(eyes_mask_l)
-        w_mask_l = w_mask_l * (1 - eyes_mask_l) * (1 - background_mask)
-        w_mask_l = self.batch_max_normalization(w_mask_l)
-
-        eyes_mask_r = mask_parse[:, 5, :, :].unsqueeze(1)
-        w_mask_r = self.big_blur(eyes_mask_r)
-        w_mask_r = w_mask_r * (1 - eyes_mask_r) * (1 - background_mask)
-        w_mask_r = self.batch_max_normalization(w_mask_r)
+        eyes_mask = mask_parse[:, 4, :, :].unsqueeze(1) + mask_parse[:, 5, :, :].unsqueeze(1)
+        w_mask = self.big_blur(eyes_mask)
+        w_mask[w_mask < 0.025] = 0
+        w_mask[w_mask >= 0.025] = 1
+        w_mask = self.medium_blur(w_mask)
+        w_mask = w_mask * (1 - eyes_mask) * (1 - background_mask)
 
         mask = torch.zeros_like(mask_parse[:, 0:1, :, :])
         for i in range(len(area_weights)):
             mask = mask + (mask_parse[:, i, :, :] * area_weights[i]).unsqueeze(1)
-        mask = mask + w_mask_l * eye_shadows_weight + w_mask_r * eye_shadows_weight
+        mask = mask + w_mask * eye_shadows_weight
         mask = self.small_blur(mask)
         mask = self.batch_mean_normalization(mask)
         return mask
@@ -305,7 +307,7 @@ class SAATGLoss(nn.Module):
 
         # mask attribute: 0:background 1:face 2:left-eyebrow 3:right-eyebrow 4:left-eye 5: right-eye 6: nose
         # 7: upper-lip 8: teeth 9: under-lip 10:hair 11: left-ear 12: right-ear 13: neck
-        self.area_weights = [0.05, 0.75, 1., 1., 1., 1., 1., 2., 1, 2., 0.2, 1., 1., 0.5]
+        self.area_weights = [0.05, 0.75, 1., 1., 1.5, 1.5, 1., 2., 1, 2., 0.2, 1., 1., 0.5]
         self.eye_shadows_weight = 2.
 
         self.false = torch.BoolTensor([False])
