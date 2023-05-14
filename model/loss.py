@@ -53,8 +53,8 @@ class FSPLossWeighted(nn.Module):
             ir_vcos = i_v * r_v / ir_vnorm
             spl_v = (1-torch.sum(ir_vcos, 3, keepdim=True)) * w_vsum
 
-            loss += (spl_h.sum() + spl_v.sum()) / (c * h * 2) / div
-            max_loss += 1 / div
+            loss += (spl_h.sum() + spl_v.sum()) / (c * h * 2) / (2**(k/4))
+            max_loss += 1 / (2**(k/4))
         return loss / max_loss
     
     def get_loss_map(self, input, reference, weights, depth):
@@ -92,9 +92,9 @@ class FSPLossWeighted(nn.Module):
                     y_min = h//div * j
                     y_max = h//div * (j+1)
                     loss_map[:,:,x_min:x_max,y_min:y_max] = (h_grid[:,:,j,i].view(1,3,1,1) + v_grid[:,:,i,j].view(1,3,1,1)) / (2 * (h//div) * (h//div))
-            loss_map_sum += loss_map / div
-            loss += (spl_h.sum() + spl_v.sum()) / (c * h * 2) / div
-            max_loss += 1 / div
+            loss_map_sum += loss_map / (2**(k/4))
+            loss += (spl_h.sum() + spl_v.sum()) / (c * h * 2) / (2**(k/4))
+            max_loss += 1 / (2**(k/4))
         return loss / max_loss, loss_map_sum / max_loss
 
 
@@ -109,7 +109,7 @@ class GPLoss(nn.Module):
         if weights is None:
             return self._trace(input, reference)
         else:
-            return self._w_trace(input, reference, weights, depth=6)
+            return self._w_trace(input, reference, weights, depth=5)
 
     def get_image_gradients(self, input):
         f_v_1 = input[:, :, :, :-1]
@@ -147,7 +147,7 @@ class CPLoss(nn.Module):
         if weights is None:
             return self._trace(input, reference)
         else:
-            return self._w_trace(input, reference, weights, depth=6)
+            return self._w_trace(input, reference, weights, depth=5)
 
     def get_image_gradients(self, input):
         f_v_1 = input[:, :, :, :-1]

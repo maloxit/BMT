@@ -122,8 +122,8 @@ def forward(input, reference, weights):
         ir_vcos = i_v * r_v / ir_vnorm
         spl_v = (1-torch.sum(ir_vcos, 3, keepdim=True)) * w_vsum
 
-        loss += (spl_h.sum() + spl_v.sum()) / (c * h * 2) / div
-        max_loss += 1 / div
+        loss += (spl_h.sum() + spl_v.sum()) / (c * h * 2) / (2**(k/4))
+        max_loss += 1 / (2**(k/4))
     return loss / max_loss
 
 
@@ -176,10 +176,10 @@ def get_loss_map(input, reference, weights, depth=6):
                 y_max = h//div * (j+1)
                 loss_map[:,:,x_min:x_max,y_min:y_max] = (h_grid[:,:,x_min:x_max,j:j+1].expand(B,c,h//div,h//div) + v_grid[:,:,i:i+1,y_min:y_max].expand(B,c,h//div,h//div)) / (2 * (h) * (h//div))
                 #loss_map[:,:,x_min:x_max,y_min:y_max] = (h_grid[:,:,i:i+1,y_min:y_max].sum(3, keepdim=True) + v_grid[:,:,x_min:x_max,j:j+1].sum(2, keepdim=True)) / (2 * (h) * (h//div) * (h//div))
-        loss_map_sum += loss_map / div
+        loss_map_sum += loss_map / (2**(k/4))
         loss_maps.append(loss_map)
-        sum += (spl_h.sum() + spl_v.sum()) / (c * h * 2) / div
-        max_sum += 1 / div
+        sum += (spl_h.sum() + spl_v.sum()) / (c * h * 2) / (2**(k/4))
+        max_sum += 1 / (2**(k/4))
         #show_mask(loss_map[0].sum(0).cpu())
         #plt.show()
     
@@ -282,7 +282,7 @@ with torch.no_grad():
         loss, loss_map_1, loss_maps = get_loss_map(non_makeup, transfer_g, torch.ones_like(weights1), 5)
         print((loss_map_1[0].sum() / 3).cpu())
         print(loss.cpu())
-        im = ax[1,6].imshow((loss_map_1[0].sum(0) * 256 * 256 / 3).cpu(), cmap='plasma', vmin=0, vmax=0.09)
+        im = ax[1,6].imshow((loss_map_1[0].sum(0) * 256 * 256 / 3).cpu(), cmap='plasma', vmin=0, vmax=0.13)
         fig.colorbar(im, ax=ax[1,-1])
         for k, loss_map in enumerate(loss_maps):
             im = ax[1,k+1].imshow((loss_map[0].sum(0) * 256 * 256 / 3).cpu(), cmap='plasma')
@@ -290,7 +290,7 @@ with torch.no_grad():
         loss, loss_map_1, loss_maps = get_loss_map(non_makeup, transfer_g, weights1, 5)
         print((loss_map_1[0].sum() / 3).cpu())
         print(loss.cpu())
-        im = ax[2,6].imshow((loss_map_1[0].sum(0) * 256 * 256 / 3).cpu(), cmap='plasma', vmin=0, vmax=0.09)
+        im = ax[2,6].imshow((loss_map_1[0].sum(0) * 256 * 256 / 3).cpu(), cmap='plasma', vmin=0, vmax=0.13)
         fig.colorbar(im, ax=ax[2,-1])
         for k, loss_map in enumerate(loss_maps):
             im = ax[2,k+1].imshow((loss_map[0].sum(0) * 256 * 256 / 3).cpu(), cmap='plasma')
