@@ -49,8 +49,9 @@ def fix_mask_eyes(mask, lms, eye_class):
             draw.polygon(points, fill=fill_color)
     return mask_img
 
-def generate_metadata(subset_config_files, config, device):
-    preprocessor = PreProcess(config, device=device)
+def generate_metadata(subset_config_files, device):
+    config = get_config()
+    preprocessor = PreProcess(config=config, device=device)
 
     items: list[DataItem] = []
 
@@ -66,7 +67,8 @@ def generate_metadata(subset_config_files, config, device):
         if subset_config.list_mode == 'WHITE':
             full_list = sorted(subset_config.filename_list)
             for filename in full_list:
-                items.append(DataItem(filename, subset_config))
+                if os.path.exists(os.path.join(subset_config.image_dir, filename)):
+                    items.append(DataItem(filename, subset_config))
         else:
             full_list = sorted(os.listdir(subset_config.image_dir))
             for filename in full_list:
@@ -125,7 +127,8 @@ class PGTGeneratorDataset(Dataset):
             if subset_config.list_mode == 'WHITE':
                 full_list = sorted(subset_config.filename_list)
                 for filename in full_list:
-                    items.append(DataItem(filename, subset_config))
+                    if os.path.exists(os.path.join(subset_config.image_dir, filename)):
+                        items.append(DataItem(filename, subset_config))
             else:
                 full_list = sorted(os.listdir(subset_config.image_dir))
                 for filename in full_list:
@@ -222,8 +225,10 @@ class GeneratorManager:
         for warp_name in warp_names:
             if warp_name.startswith('.ipynb'):
                 continue
-            shutil.copy(os.path.join(self.warp_dir, warp_name), os.path.join(self.warp_alt_dir, warp_name))
-            shutil.move(os.path.join(self.warp_dir, warp_name), os.path.join(self.warp_storage_dir, warp_name))
+            if self.warp_dir != self.warp_alt_dir:
+                shutil.copy(os.path.join(self.warp_dir, warp_name), os.path.join(self.warp_alt_dir, warp_name))
+            if self.warp_dir != self.warp_storage_dir:
+                shutil.move(os.path.join(self.warp_dir, warp_name), os.path.join(self.warp_storage_dir, warp_name))
 
     def generate_dataset(self):
         dataloader = DataLoader(dataset=self.dataset,
@@ -319,9 +324,8 @@ def run():
     else:
         args.device = torch.device('cpu')
 
-    config = get_config()
     if not args.skip_metadata:
-        generate_metadata(args.subset_config_files, config, args.device)
+        generate_metadata(args.subset_config_files, args.device)
     if not args.metadata_only:
         generator_manager = GeneratorManager(args, args.device)
         generator_manager.generate_dataset()

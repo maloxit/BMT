@@ -51,7 +51,8 @@ class MakeupDataset(data.Dataset):
             if subset_config.list_mode == 'WHITE':
                 full_list = sorted(subset_config.filename_list)
                 for filename in full_list:
-                    items.append(DataItem(filename, subset_config))
+                    if os.path.exists(os.path.join(subset_config.image_dir, filename)):
+                        items.append(DataItem(filename, subset_config))
             else:
                 full_list = sorted(os.listdir(subset_config.image_dir))
                 for filename in full_list:

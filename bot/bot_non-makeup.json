@@ -1,0 +1,9 @@
+{
+    "py/object": "model.subset.SubsetConfig",
+    "data_type": "NON_MAKEUP",
+    "lms_dir": "bot/tmp/lms/non-makeup",
+    "mask_dir": "bot/tmp/seg1/non-makeup",
+    "image_dir": "bot/tmp/images/non-makeup",
+    "list_mode": "WHITE",
+    "filename_list": ["tmp_non_makeup.png", "tmp_non_makeup.jpg", "tmp_non_makeup.jpeg", "tmp_non_makeup.bmp"]
+}
