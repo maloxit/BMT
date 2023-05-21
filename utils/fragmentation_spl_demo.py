@@ -3,7 +3,7 @@ import torch
 import torch.utils.data as torchdt
 import argparse
 import numpy as np
-from model.loss import WeightMaskGenerator
+from model.loss import WeightMaskGenerator, FSPLossWeighted
 from model.dataset import MakeupDataset
 import torch.nn.functional as F
 from tqdm import tqdm
@@ -78,6 +78,7 @@ dataset = MakeupDataset(test_opts, device, ['datasets/paper_non_makeup.json', 'd
 data_loader = torchdt.DataLoader(dataset, batch_size=1, shuffle=False, num_workers=test_opts.nThreads)
 
 weightGen = WeightMaskGenerator()
+fspl = FSPLossWeighted()
 
 
 def batch_max_normalization(input):
@@ -103,7 +104,7 @@ def forward(input, reference, weights):
     inputT = input.transpose(2,3).contiguous()
     referenceT = reference.transpose(2,3).contiguous()
     weightsT = weights.transpose(2,3).contiguous()
-    for k in range(0,6):
+    for k in range(0,5):
         div = int(2**k)
 
         i_h = input.view(B,c,-1,h//div)
@@ -200,17 +201,8 @@ with torch.no_grad():
         transfer_g = ((transfer_g + 1)/2)
         removal_g = ((removal_g + 1)/2)
 
-        fig, ax = plt.subplots(1, 2, gridspec_kw={'wspace':0.0,'hspace':0.0})
-        for axis in ax:
-            axis.set_axis_off()
-
         weights1 = weightGen.forward(non_makeup_parse, area_weights, eye_shadows_weight)
         weights2 = weightGen.forward(makeup_parse, area_weights, eye_shadows_weight)
-
-        im = ax[0].imshow(weights1[0,0].cpu(), cmap='plasma', vmin=0, vmax=5)
-        im = ax[1].imshow(weights2[0,0].cpu(), cmap='plasma', vmin=0, vmax=5)
-        
-        fig.colorbar(im, ax=ax)
 
         fig, ax = plt.subplots(2, 4, gridspec_kw={'wspace':0.0,'hspace':0.1})
         for axis_row in ax:
@@ -247,13 +239,19 @@ with torch.no_grad():
         im = ax[1,1].imshow((loss_map_1[0].sum(0) * 256 * 256 / 3).cpu(), cmap='plasma', vmin=0, vmax=2.2)
         fig.colorbar(im, ax=ax[1,:2])
         
-        fig, ax = plt.subplots(1, 2, gridspec_kw={'wspace':0.0,'hspace':0.0})
-        for axis in ax:
-            axis.set_axis_off()
 
-        im = ax[0].imshow((loss_map_1[0].sum(0) * 256 * 256 / 3).cpu(), cmap='plasma', vmin=0, vmax=2.2)
-        im = ax[1].imshow((loss_map_2[0].sum(0) * 256 * 256 / 3).cpu(), cmap='plasma', vmin=0, vmax=2.2)
-        fig.colorbar(im, ax=ax[:2])
+        fig, ax = plt.subplots(2, 2, gridspec_kw={'wspace':0.0,'hspace':0.1})
+        for axis_row in ax:
+            for axis in axis_row:
+                axis.set_axis_off()
+
+        im = ax[0,0].imshow(weights1[0,0].cpu(), cmap='plasma', vmin=0, vmax=5)
+        im = ax[0,1].imshow(weights2[0,0].cpu(), cmap='plasma', vmin=0, vmax=5)
+        fig.colorbar(im, ax=ax[0,:])
+
+        im = ax[1,0].imshow((loss_map_1[0].sum(0) * 256 * 256 / 3).cpu(), cmap='plasma', vmin=0, vmax=2.2)
+        im = ax[1,1].imshow((loss_map_2[0].sum(0) * 256 * 256 / 3).cpu(), cmap='plasma', vmin=0, vmax=2.2)
+        fig.colorbar(im, ax=ax[1,:])
         plt.show()
 
         print((loss_map_1[0].sum() / 3).cpu())
@@ -295,6 +293,14 @@ with torch.no_grad():
         for k, loss_map in enumerate(loss_maps):
             im = ax[2,k+1].imshow((loss_map[0].sum(0) * 256 * 256 / 3).cpu(), cmap='plasma')
         plt.show()
+
+        loss, loss_map_1, loss_maps = get_loss_map(non_makeup, transfer_g, weights1, 5)
+        print((loss_map_1[0].sum() / 3).cpu() * 37.5)
+        print(loss.cpu() * 37.5)
+        loss = forward(non_makeup, transfer_g, weights1)
+        print(loss.cpu() * 37.5)
+        loss = fspl(non_makeup, transfer_g, weights1)
+        print(loss.cpu())
 
 
 
